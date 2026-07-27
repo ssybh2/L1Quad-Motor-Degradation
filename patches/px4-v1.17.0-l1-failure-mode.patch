@@ -100,6 +100,7 @@
 +	setRequirement(vehicle_status_s::NAVIGATION_STATE_L1_FAILURE_ALT, flags.mode_req_angular_velocity);
 +	setRequirement(vehicle_status_s::NAVIGATION_STATE_L1_FAILURE_ALT, flags.mode_req_attitude);
 +	setRequirement(vehicle_status_s::NAVIGATION_STATE_L1_FAILURE_ALT, flags.mode_req_local_alt);
++	setRequirement(vehicle_status_s::NAVIGATION_STATE_L1_FAILURE_ALT, flags.mode_req_local_position_relaxed);
 +	setRequirement(vehicle_status_s::NAVIGATION_STATE_L1_FAILURE_ALT, flags.mode_req_manual_control);
 +	setRequirement(vehicle_status_s::NAVIGATION_STATE_L1_FAILURE_ALT, flags.mode_req_prevent_arming);
 +
@@ -128,11 +129,9 @@
 +	"L1 Failure",
 --- a/ROMFS/px4fmu_common/init.d/rc.mc_apps
 +++ b/ROMFS/px4fmu_common/init.d/rc.mc_apps
-@@ -17,0 +18,6 @@
+@@ -17,0 +18,4 @@
 +if param compare L1_FAIL_EN 1
 +then
-+	param set SYS_FAILURE_EN 1
-+	param set CA_FAILURE_MODE 1
 +	l1_adaptive_control start
 +fi
 +

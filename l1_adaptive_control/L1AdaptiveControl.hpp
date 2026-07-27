@@ -20,9 +20,7 @@
 #include <uORB/topics/vehicle_angular_velocity.h>
 #include <uORB/topics/manual_control_setpoint.h>
 #include <uORB/topics/input_rc.h>
-#include <uORB/topics/failure_detector_status.h>
 #include <uORB/topics/vehicle_status.h>
-#include <uORB/topics/vehicle_command.h>
 #include <uORB/topics/vehicle_thrust_setpoint.h>
 #include <uORB/topics/vehicle_torque_setpoint.h>
 
@@ -101,7 +99,6 @@ void update_trajectory_input();
 void run_trajectory_generator();
 void update_manual_height_control_input();
 void update_failure_mode();
-void publish_motor_failure_command(uint8_t failure_type);
 void apply_trajectory_command();
 
 void update_controller_input();
@@ -119,12 +116,10 @@ uORB::Subscription _vehicle_attitude_setpoint_sub{ORB_ID(vehicle_attitude_setpoi
 uORB::Subscription _vehicle_angular_velocity_sub{ORB_ID(vehicle_angular_velocity)};
 uORB::Subscription _manual_control_setpoint_sub{ORB_ID(manual_control_setpoint)};
 uORB::Subscription _input_rc_sub{ORB_ID(input_rc)};
-uORB::Subscription _failure_detector_status_sub{ORB_ID(failure_detector_status)};
 uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
 
 uORB::Publication<vehicle_thrust_setpoint_s> _vehicle_thrust_setpoint_pub{ORB_ID(vehicle_thrust_setpoint)};
 uORB::Publication<vehicle_torque_setpoint_s> _vehicle_torque_setpoint_pub{ORB_ID(vehicle_torque_setpoint)};
-uORB::Publication<vehicle_command_s> _vehicle_command_pub{ORB_ID(vehicle_command)};
 
 vehicle_local_position_s _vehicle_local_position{};
 vehicle_attitude_s _vehicle_attitude{};
@@ -132,7 +127,6 @@ vehicle_attitude_setpoint_s _vehicle_attitude_setpoint{};
 vehicle_angular_velocity_s _vehicle_angular_velocity{};
 manual_control_setpoint_s _manual_control_setpoint{};
 input_rc_s _input_rc{};
-failure_detector_status_s _failure_detector_status{};
 vehicle_status_s _vehicle_status{};
 
 bool _has_local_position{false};
@@ -141,11 +135,8 @@ bool _has_attitude_setpoint{false};
 bool _has_angular_velocity{false};
 bool _has_manual_control_setpoint{false};
 bool _has_vehicle_status{false};
-bool _motor_failure_active{false};
-bool _motor_failure_detected{false};
 bool _failure_mode_selected{false};
 bool _altitude_failure_mode_selected{false};
-bool _failure_commanded{false};
 
 px4::atomic_bool _rc_height_control_enabled{false};
 px4::atomic<uint8_t> _trajectory_command_mode{static_cast<uint8_t>(TrajectoryGenerator::CommandedMode::Hover)};

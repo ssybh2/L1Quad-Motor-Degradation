@@ -1,0 +1,68 @@
+diff --git a/src/modules/control_allocator/ControlAllocator.cpp b/src/modules/control_allocator/ControlAllocator.cpp
+--- a/src/modules/control_allocator/ControlAllocator.cpp
++++ b/src/modules/control_allocator/ControlAllocator.cpp
+@@ -339,6 +339,18 @@ void ControlAllocator::Run()
+ 		if (_vehicle_status_sub.update(&vehicle_status)) {
+ 
+ 			_armed = vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_ARMED;
++			const bool l1_failure_mode_active =
++				vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_L1_FAILURE
++				|| vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_L1_FAILURE_ALT;
++
++			if (l1_failure_mode_active != _l1_failure_mode_active) {
++				_l1_failure_mode_active = l1_failure_mode_active;
++				PX4_WARN("Motor 1 scaling %s (%.0f%% command remaining)",
++					 _l1_failure_mode_active ? "active" : "inactive",
++					 (double)(_l1_failure_mode_active
++						  ? math::constrain(_param_l1_mot1_scale.get(), 0.f, 1.f) * 100.f
++						  : 100.f));
++			}
+ 
+ 			ActuatorEffectiveness::FlightPhase flight_phase{ActuatorEffectiveness::FlightPhase::HOVER_FLIGHT};
+ 
+@@ -680,6 +692,11 @@ void ControlAllocator::publishActuatorControls()
+ 
+ 		if (stopped_motors & (1u << motors_idx)) {
+ 			actuator_motors.control[motors_idx] = NAN;
++
++		} else if (_armed && _l1_failure_mode_active && motors_idx == 0
++			   && PX4_ISFINITE(actuator_motors.control[motors_idx])) {
++			const float motor_1_output_scale = math::constrain(_param_l1_mot1_scale.get(), 0.f, 1.f);
++			actuator_motors.control[motors_idx] *= motor_1_output_scale;
+ 		}
+ 
+ 		++actuator_idx_matrix[selected_matrix];
+@@ -840,6 +857,12 @@ int ControlAllocator::print_status()
+ 			 _handled_motor_failure_bitmask);
+ 	}
+ 
++	PX4_INFO("Motor 1 scaling: %s, %.0f%% command remaining",
++		 _l1_failure_mode_active ? "active" : "inactive",
++		 (double)(_l1_failure_mode_active
++			  ? math::constrain(_param_l1_mot1_scale.get(), 0.f, 1.f) * 100.f
++			  : 100.f));
++
+ 	// Print perf
+ 	perf_print_counter(_loop_perf);
+ 
+diff --git a/src/modules/control_allocator/ControlAllocator.hpp b/src/modules/control_allocator/ControlAllocator.hpp
+--- a/src/modules/control_allocator/ControlAllocator.hpp
++++ b/src/modules/control_allocator/ControlAllocator.hpp
+@@ -206,6 +206,7 @@ private:
+ 	perf_counter_t	_loop_perf;			/**< loop duration performance counter */
+ 
+ 	bool _armed{false};
++	bool _l1_failure_mode_active{false};
+ 	hrt_abstime _last_run{0};
+ 	hrt_abstime _timestamp_sample{0};
+ 	hrt_abstime _last_status_pub{0};
+@@ -218,7 +219,8 @@ private:
+ 		(ParamInt<px4::params::CA_AIRFRAME>) _param_ca_airframe,
+ 		(ParamInt<px4::params::CA_METHOD>) _param_ca_method,
+ 		(ParamInt<px4::params::CA_FAILURE_MODE>) _param_ca_failure_mode,
+-		(ParamInt<px4::params::CA_R_REV>) _param_r_rev
++		(ParamInt<px4::params::CA_R_REV>) _param_r_rev,
++		(ParamFloat<px4::params::L1_MOT1_SCALE>) _param_l1_mot1_scale
+ 	)
+ 
+ };

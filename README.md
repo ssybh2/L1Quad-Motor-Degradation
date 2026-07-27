@@ -27,10 +27,10 @@ PX4 state estimates
 
 - L1 adaptive geometric controller.
 - RC, QGC Joystick and SITL keyboard input.
-- Motor 1 failure injection with yaw control released.
-- `L1 Failure`: Position-based motor-failure mode.
-- `L1 Altitude Failure`: Altitude-based motor-failure mode with manual
-  roll/pitch input.
+- Configurable Motor 1 output degradation in L1 failure modes.
+- Yaw control retained during partial Motor 1 degradation.
+- `L1 Failure`: Position-based mode that holds position and altitude.
+- `L1 Altitude Failure`: Altitude-based mode with manual roll/pitch input.
 
 ## Repository Layout
 

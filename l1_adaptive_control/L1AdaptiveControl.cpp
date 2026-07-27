@@ -43,7 +43,6 @@ static constexpr float MAX_L1_THRUST_N = VEHICLE_MASS_KG * GRAVITY_MSS * 0.35f;
 static constexpr float MAX_L1_ROLL_PITCH_MOMENT_NM = 0.35f;
 static constexpr float MAX_L1_YAW_MOMENT_NM = 0.20f;
 static constexpr hrt_abstime MANUAL_CONTROL_TIMEOUT_US = 500000;
-static constexpr uint8_t FAILED_MOTOR_INSTANCE = 1;
 
 float dot3(const float a[3], const float b[3])
 {
@@ -120,10 +119,6 @@ ScheduledWorkItem(MODULE_NAME, px4::wq_configurations::nav_and_controllers)
 
 L1AdaptiveControl::~L1AdaptiveControl()
 {
-if (_failure_commanded) {
-publish_motor_failure_command(vehicle_command_s::FAILURE_TYPE_OK);
-}
-
 perf_free(_loop_perf);
 perf_free(_loop_interval_perf);
 }
@@ -196,11 +191,6 @@ _has_manual_control_setpoint = true;
 }
 
 _input_rc_sub.update(&_input_rc);
-
-if (_failure_detector_status_sub.update(&_failure_detector_status)) {
-	_motor_failure_detected = _failure_detector_status.motor_failure_mask != 0
-				  || _failure_detector_status.motor_stop_mask != 0;
-}
 
 if (_vehicle_status_sub.update(&_vehicle_status)) {
 _has_vehicle_status = true;
@@ -328,17 +318,6 @@ void L1AdaptiveControl::update_manual_height_control_input()
 	}
 }
 
-void L1AdaptiveControl::publish_motor_failure_command(uint8_t failure_type)
-{
-	vehicle_command_s command{};
-	command.timestamp = hrt_absolute_time();
-	command.command = vehicle_command_s::VEHICLE_CMD_INJECT_FAILURE;
-	command.param1 = static_cast<float>(vehicle_command_s::FAILURE_UNIT_SYSTEM_MOTOR);
-	command.param2 = static_cast<float>(failure_type);
-	command.param3 = static_cast<float>(FAILED_MOTOR_INSTANCE);
-	_vehicle_command_pub.publish(command);
-}
-
 void L1AdaptiveControl::update_failure_mode()
 {
 	const bool position_selected = _state.nav_state == vehicle_status_s::NAVIGATION_STATE_L1_FAILURE;
@@ -354,25 +333,6 @@ void L1AdaptiveControl::update_failure_mode()
 		reset_l1_adaptive_state();
 		PX4_WARN("L1 failure mode %s",
 			  !selected ? "left" : (altitude_selected ? "altitude selected" : "position selected"));
-	}
-
-	if (_failure_mode_selected && _state.armed && !_failure_commanded) {
-		publish_motor_failure_command(vehicle_command_s::FAILURE_TYPE_OFF);
-		_failure_commanded = true;
-		PX4_WARN("Motor 1 failure requested by L1 failure mode");
-
-	} else if (_failure_commanded && (!_failure_mode_selected || !_state.armed)) {
-		publish_motor_failure_command(vehicle_command_s::FAILURE_TYPE_OK);
-		_failure_commanded = false;
-		PX4_INFO("Motor 1 restored after leaving L1 failure mode");
-	}
-
-	if (_motor_failure_detected != _motor_failure_active) {
-		_motor_failure_active = _motor_failure_detected;
-		reset_l1_adaptive_state();
-		PX4_WARN("motor-out mode %s: yaw control %s",
-			  _motor_failure_active ? "active" : "inactive",
-			  _motor_failure_active ? "released" : "restored");
 	}
 }
 
@@ -420,21 +380,11 @@ if (_altitude_failure_mode_selected && _has_attitude_setpoint) {
 	}
 }
 
-// A quadrotor with one failed motor cannot independently control thrust and
-// all three moments. Release yaw as soon as either failure mode is selected
-// so the remaining motors can prioritize thrust, roll and pitch.
-_controller_input.target_yaw = _failure_mode_selected
-			       ? yaw_from_quat_body_to_ned(_state.quat_body_to_ned)
-			       : _trajectory_output.yaw;
+// Partial Motor 1 degradation retains enough actuator authority for yaw.
+_controller_input.target_yaw = _trajectory_output.yaw;
 _controller_input.target_yaw_rate = _trajectory_output.yaw_rate;
 _controller_input.target_yaw_accel = _trajectory_output.yaw_accel;
-
-if (_failure_mode_selected) {
-	_controller_input.target_yaw_rate = 0.f;
-	_controller_input.target_yaw_accel = 0.f;
-}
-
-_controller_input.yaw_control_enabled = !_failure_mode_selected;
+_controller_input.yaw_control_enabled = true;
 
 _controller_input.state_valid_for_control = _state_valid_for_control && _trajectory_output.valid;
 _controller_input.armed = _state.armed;
@@ -478,7 +428,7 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 		_geometric_output.thrust_newton,
 		_geometric_output.moment_newton_meter[0],
 		_geometric_output.moment_newton_meter[1],
-		_failure_mode_selected ? 0.f : _geometric_output.moment_newton_meter[2]
+		_geometric_output.moment_newton_meter[2]
 	};
 
 	if (!_l1_state.initialized) {
@@ -626,12 +576,6 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 		_l1_state.lpf1_prev[i] = lpf1[i];
 		_l1_state.lpf2_prev[i] = lpf2[i];
 		_combined_thrust_moment[i] = baseline_thrust_moment[i] + _l1_output_thrust_moment[i];
-	}
-
-	if (_failure_mode_selected) {
-		_l1_output_thrust_moment[3] = 0.f;
-		_l1_state.adaptive_thrust_moment_prev[3] = 0.f;
-		_combined_thrust_moment[3] = 0.f;
 	}
 
 	sigma_unmatched[0] = math::constrain(sigma_unmatched[0], -MAX_L1_THRUST_N, MAX_L1_THRUST_N);

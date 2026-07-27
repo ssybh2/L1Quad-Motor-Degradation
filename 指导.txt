@@ -162,8 +162,7 @@ SIH_T_TAU = 0.02
 SIH_L_ROLL = 0.175
 SIH_L_PITCH = 0.131
 THR_MDL_FAC = 0
-SYS_FAILURE_EN = 1
-CA_FAILURE_MODE = 1
+L1_MOT1_SCALE = 0.8
 
 飞控重启后，如果 jMAVSim 不再更新，关闭 jMAVSim 并按上述命令重新启动。
 
@@ -173,11 +172,11 @@ CA_FAILURE_MODE = 1
 QGC Flight Modes 中可以配置：
 
 L1 Failure
-  基于 Position；Motor 1 停转，保持位置和高度，释放偏航。
+  基于 Position；Motor 1 按参数降低输出，保持位置、高度和偏航。
 
 L1 Altitude Failure
-  基于 Altitude；Motor 1 停转，横滚/俯仰摇杆控制倾角，
-  油门控制升降，不保持水平位置，释放偏航。
+  基于 Altitude；Motor 1 按参数降低输出，横滚/俯仰摇杆控制倾角，
+  油门控制升降，不保持水平位置，并保持偏航。
 
 测试顺序：
 
@@ -185,18 +184,19 @@ L1 Altitude Failure
 2. 正常解锁、起飞并稳定悬停。
 3. 油门保持中位，横滚和俯仰保持中位。
 4. 切入一个 L1 失效模式。
-5. 确认 Motor 1 停转且飞机未快速翻落。
-6. 拨回 Position，确认 Motor 1 恢复。
+5. 确认 Motor 1 保留 L1_MOT1_SCALE 指定的输出且飞机未快速翻落。
+6. 拨回 Position，确认 Motor 1 恢复100%输出。
 7. 降落并锁定。
 
 两个 L1 失效模式都禁止用于解锁，只能在正常起飞后切入。
-Motor 1 失效后持续绕 yaw 旋转属于预期现象。
+控制器在失效模式继续保持 yaw，不应持续绕 yaw 旋转。
 
 检查状态：
 
 l1_adaptive_control status
 listener vehicle_status 1
-listener failure_detector_status 1
+param show L1_MOT1_SCALE
+control_allocator status
 
 L1 Failure 的 nav_state 为 16。
 L1 Altitude Failure 的 nav_state 为 7。
@@ -283,9 +283,12 @@ MANUAL_MIN_HEIGHT_M、MANUAL_MAX_HEIGHT_M
 ./Ardupoilt-to-PX4/l1_adaptive_control/l1_adaptive_control_params.c:10
 
 L1_FAIL_EN = 1
+L1_MOT1_SCALE = 0.8
 
-上述 constexpr 参数修改后必须重新编译并刷写固件。L1_FAIL_EN 是 PX4
-运行时参数，可以通过 QGC 或 param set 修改，不需要重新编译。
+上述 constexpr 参数修改后必须重新编译并刷写固件。L1_FAIL_EN 和
+L1_MOT1_SCALE 是 PX4 运行时参数，可以通过 QGC 或 param set 修改，
+不需要重新编译。L1_MOT1_SCALE 表示 Motor 1 剩余输出指令比例；
+真机实际推力比例受 ESC、电机和螺旋桨曲线影响，带桨前必须标定。
 
 
 ==================== 第二部分：排错与安全说明 ====================
@@ -306,8 +309,8 @@ listener input_rc 5 检查。
 
 切换失效模式没有反应：
 
-检查 L1 是否运行、nav_state 是否为 16 或 7，以及
-SYS_FAILURE_EN 和 CA_FAILURE_MODE 是否为 1。
+检查 L1 是否运行、nav_state 是否为 16 或 7，并检查
+L1_MOT1_SCALE 和 control_allocator status。
 
 jMAVSim Port busy：
 
@@ -319,8 +322,8 @@ SITL 传感器、EKF 和起飞功能正常时，这些通常是仿真环境提�
 
 切换后飞机持续旋转：
 
-单电机失效后控制器主动释放 yaw，把剩余控制能力用于推力、roll 和 pitch，
-因此旋转是预期现象。
+当前版本在电机降级时继续保持 yaw。持续旋转不是预期现象，应立即切回
+Position 并检查电机编号、方向、输出比例和 yaw 控制输出。
 
 
 十一、安全边界
