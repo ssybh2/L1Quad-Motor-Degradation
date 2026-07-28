@@ -60,7 +60,7 @@ _skip_takeoff = input.initialize_in_hover;
 
 if (!_skip_takeoff) {
 	// NED convention: z becomes more negative when the vehicle moves upward.
-	_takeoff_target_position_ned[2] = _start_position_ned[2] - TAKEOFF_HEIGHT_M;
+	_takeoff_target_position_ned[2] = _start_position_ned[2] - _takeoff_height_m;
 }
 
 copy3(_takeoff_target_position_ned, _hover_position_ned);
@@ -78,11 +78,11 @@ output.yaw = _start_yaw;
 output.yaw_rate = 0.f;
 output.yaw_accel = 0.f;
 
-if (!_skip_takeoff && elapsed_s < TAKEOFF_DURATION_S) {
+if (!_skip_takeoff && elapsed_s < _takeoff_duration_s) {
 output.mode = Mode::Takeoff;
 _manual_hold_initialized = false;
 
-const float s = math::constrain(elapsed_s / TAKEOFF_DURATION_S, 0.f, 1.f);
+const float s = math::constrain(elapsed_s / _takeoff_duration_s, 0.f, 1.f);
 
 // Smooth cubic trajectory:
 // h(s) = 3s^2 - 2s^3
@@ -90,9 +90,9 @@ const float s = math::constrain(elapsed_s / TAKEOFF_DURATION_S, 0.f, 1.f);
 // h_ddot = (6 - 12s) / T^2
 // h_jerk = -12 / T^3
 const float h = 3.f * s * s - 2.f * s * s * s;
-const float h_dot = (6.f * s - 6.f * s * s) / TAKEOFF_DURATION_S;
-const float h_ddot = (6.f - 12.f * s) / (TAKEOFF_DURATION_S * TAKEOFF_DURATION_S);
-const float h_jerk = -12.f / (TAKEOFF_DURATION_S * TAKEOFF_DURATION_S * TAKEOFF_DURATION_S);
+const float h_dot = (6.f * s - 6.f * s * s) / _takeoff_duration_s;
+const float h_ddot = (6.f - 12.f * s) / (_takeoff_duration_s * _takeoff_duration_s);
+const float h_jerk = -12.f / (_takeoff_duration_s * _takeoff_duration_s * _takeoff_duration_s);
 
 for (int i = 0; i < 3; i++) {
 const float delta = _takeoff_target_position_ned[i] - _start_position_ned[i];
@@ -106,7 +106,7 @@ output.snap_ned[i] = 0.f;
 
 } else {
 const float commanded_speed_m_s =
-	_commanded_mode == CommandedMode::Circle ? CIRCLE_SPEED_M_S : 0.f;
+	_commanded_mode == CommandedMode::Circle ? _circle_speed_m_s : 0.f;
 update_circle_target(input, output, commanded_speed_m_s);
 }
 
@@ -144,6 +144,20 @@ _commanded_mode = mode;
 reset_circle_state();
 }
 
+void TrajectoryGenerator::set_takeoff_height_m(float height_m)
+{
+if (std::isfinite(height_m)) {
+_takeoff_height_m = math::constrain(height_m, 0.1f, 10.f);
+}
+}
+
+void TrajectoryGenerator::set_takeoff_duration_s(float duration_s)
+{
+if (std::isfinite(duration_s)) {
+_takeoff_duration_s = math::constrain(duration_s, 0.1f, 20.f);
+}
+}
+
 void TrajectoryGenerator::set_circle_radius_m(float radius_m)
 {
 if (!std::isfinite(radius_m)) {
@@ -165,19 +179,80 @@ copy3(_last_output.position_ned, _circle_transition_start_position_ned);
 copy3(_circle_center_position_ned, _circle_start_position_ned);
 _circle_start_position_ned[1] -= _circle_radius_m;
 _circle_start_position_ned[2] = _circle_center_position_ned[2];
-_circle_current_speed_rad_s = CIRCLE_SPEED_M_S / _circle_radius_m;
+_circle_current_speed_rad_s = _circle_speed_m_s / _circle_radius_m;
 _circle_transition_start_time_s = _last_output.elapsed_time_s;
-_circle_orbit_start_time_s = _circle_transition_start_time_s + CIRCLE_TRANSITION_DURATION_S;
+_circle_orbit_start_time_s = _circle_transition_start_time_s + _circle_transition_duration_s;
+}
+}
+
+void TrajectoryGenerator::set_circle_speed_m_s(float speed_m_s)
+{
+if (!std::isfinite(speed_m_s)) {
+return;
+}
+
+const float constrained_speed_m_s = math::constrain(speed_m_s, 0.05f, 2.f);
+
+if (fabsf(constrained_speed_m_s - _circle_speed_m_s) < 1e-4f) {
+return;
+}
+
+if (_circle_initialized && _last_output.valid && _last_output.mode == Mode::Circle) {
+const float old_phase_rad = _circle_current_speed_rad_s
+			    * math::max(_last_output.elapsed_time_s - _circle_orbit_start_time_s, 0.f);
+const float new_speed_rad_s = constrained_speed_m_s / _circle_radius_m;
+_circle_orbit_start_time_s = _last_output.elapsed_time_s - old_phase_rad / new_speed_rad_s;
+_circle_current_speed_rad_s = new_speed_rad_s;
+
+} else if (_circle_initialized) {
+_circle_current_speed_rad_s = constrained_speed_m_s / _circle_radius_m;
+}
+
+_circle_speed_m_s = constrained_speed_m_s;
+}
+
+void TrajectoryGenerator::set_circle_transition_duration_s(float duration_s)
+{
+if (std::isfinite(duration_s)) {
+_circle_transition_duration_s = math::constrain(duration_s, 0.1f, 20.f);
+}
+}
+
+void TrajectoryGenerator::set_manual_height_deadzone(float deadzone)
+{
+if (std::isfinite(deadzone)) {
+_manual_height_deadzone = math::constrain(deadzone, 0.f, 0.5f);
+}
+}
+
+void TrajectoryGenerator::set_manual_max_climb_rate_m_s(float climb_rate_m_s)
+{
+if (std::isfinite(climb_rate_m_s)) {
+_manual_max_climb_rate_m_s = math::constrain(climb_rate_m_s, 0.05f, 3.f);
+}
+}
+
+void TrajectoryGenerator::set_manual_min_height_m(float height_m)
+{
+if (std::isfinite(height_m)) {
+_manual_min_height_m = math::constrain(height_m, 0.f, 10.f);
+}
+}
+
+void TrajectoryGenerator::set_manual_max_height_m(float height_m)
+{
+if (std::isfinite(height_m)) {
+_manual_max_height_m = math::constrain(height_m, 0.1f, 50.f);
 }
 }
 
 float TrajectoryGenerator::circle_period_s() const
 {
-if (CIRCLE_SPEED_M_S < 1e-5f || _circle_radius_m < 1e-5f) {
+if (_circle_speed_m_s < 1e-5f || _circle_radius_m < 1e-5f) {
 return 0.f;
 }
 
-return TWO_PI_F * _circle_radius_m / CIRCLE_SPEED_M_S;
+return TWO_PI_F * _circle_radius_m / _circle_speed_m_s;
 }
 
 void TrajectoryGenerator::set_zero_derivatives(Output &output)
@@ -228,17 +303,17 @@ _last_update_us = input.timestamp_us;
 const float dt = math::constrain((input.timestamp_us - _last_update_us) * 1e-6f, 0.f, 0.1f);
 float stick = input.manual_height_control_valid ? math::constrain(input.manual_height_stick, -1.f, 1.f) : 0.f;
 
-if (fabsf(stick) < MANUAL_HEIGHT_DEADZONE) {
+if (fabsf(stick) < _manual_height_deadzone) {
 stick = 0.f;
 }
 
-const float target_vz_ned = -stick * MANUAL_MAX_CLIMB_RATE_M_S;
+const float target_vz_ned = -stick * _manual_max_climb_rate_m_s;
 _manual_hold_position_ned[2] += target_vz_ned * dt;
 
-const float min_z_ned = _start_position_ned[2] - MANUAL_MAX_HEIGHT_M;
+const float min_z_ned = _start_position_ned[2] - _manual_max_height_m;
 const float max_z_ned = _skip_takeoff
-			? _start_position_ned[2] + MANUAL_MAX_HEIGHT_M
-			: _start_position_ned[2] - MANUAL_MIN_HEIGHT_M;
+			? _start_position_ned[2] + _manual_max_height_m
+			: _start_position_ned[2] - _manual_min_height_m;
 _manual_hold_position_ned[2] = math::constrain(_manual_hold_position_ned[2], min_z_ned, max_z_ned);
 
 _hover_position_ned[2] = _manual_hold_position_ned[2];
@@ -275,7 +350,7 @@ copy3(_circle_center_position_ned, _circle_start_position_ned);
 _circle_start_position_ned[1] -= radius;
 _circle_current_speed_rad_s = speed_m_s / radius;
 _circle_transition_start_time_s = output.elapsed_time_s;
-_circle_orbit_start_time_s = _circle_transition_start_time_s + CIRCLE_TRANSITION_DURATION_S;
+_circle_orbit_start_time_s = _circle_transition_start_time_s + _circle_transition_duration_s;
 _circle_initialized = true;
 }
 
@@ -293,7 +368,7 @@ _circle_start_position_ned[2] = _circle_center_position_ned[2];
 
 const float transition_time_s = output.elapsed_time_s - _circle_transition_start_time_s;
 
-if (transition_time_s < CIRCLE_TRANSITION_DURATION_S) {
+if (transition_time_s < _circle_transition_duration_s) {
 update_circle_transition_target(output, transition_time_s, target_vz_ned);
 return;
 }
@@ -340,7 +415,7 @@ void TrajectoryGenerator::update_circle_transition_target(Output &output, float 
 {
 output.mode = Mode::CircleTransition;
 
-const float duration = CIRCLE_TRANSITION_DURATION_S;
+const float duration = _circle_transition_duration_s;
 const float s = math::constrain(transition_time_s / duration, 0.f, 1.f);
 const float s2 = s * s;
 const float s3 = s2 * s;

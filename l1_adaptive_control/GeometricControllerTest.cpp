@@ -52,6 +52,9 @@ return sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
 TEST(GeometricController, HoverProducesLevelAttitudeZeroOmegaDAndWeightThrust)
 {
 GeometricController controller;
+GeometricController::Parameters parameters = controller.parameters();
+parameters.mass_kg = kMassKg;
+controller.set_parameters(parameters);
 GeometricController::Input input = make_hover_input();
 GeometricController::Output output{};
 

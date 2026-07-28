@@ -349,6 +349,48 @@ EXPECT_NEAR(circle.position_ned[0], 0.f, kTolerance);
 EXPECT_NEAR(circle.position_ned[1], -2.f, kTolerance);
 }
 
+TEST(TrajectoryGenerator, ConfigurableTrajectoryAndManualSettingsAreApplied)
+{
+TrajectoryGenerator generator;
+generator.set_takeoff_height_m(1.5f);
+generator.set_takeoff_duration_s(3.f);
+generator.set_circle_speed_m_s(0.8f);
+generator.set_circle_transition_duration_s(2.5f);
+generator.set_manual_height_deadzone(0.15f);
+generator.set_manual_max_climb_rate_m_s(0.6f);
+generator.set_manual_min_height_m(0.7f);
+generator.set_manual_max_height_m(3.f);
+
+EXPECT_FLOAT_EQ(generator.takeoff_height_m(), 1.5f);
+EXPECT_FLOAT_EQ(generator.takeoff_duration_s(), 3.f);
+EXPECT_FLOAT_EQ(generator.circle_speed_m_s(), 0.8f);
+EXPECT_FLOAT_EQ(generator.circle_transition_duration_s(), 2.5f);
+EXPECT_FLOAT_EQ(generator.manual_height_deadzone(), 0.15f);
+EXPECT_FLOAT_EQ(generator.manual_max_climb_rate_m_s(), 0.6f);
+EXPECT_FLOAT_EQ(generator.manual_min_height_m(), 0.7f);
+EXPECT_FLOAT_EQ(generator.manual_max_height_m(), 3.f);
+}
+
+TEST(TrajectoryGenerator, SpeedChangeDuringCirclePreservesPosition)
+{
+TrajectoryGenerator generator;
+
+update_at(generator, 0);
+update_at(generator, 2'000'000);
+generator.set_commanded_mode(TrajectoryGenerator::CommandedMode::Circle);
+update_at(generator, 2'000'000);
+update_at(generator, 4'000'000);
+const TrajectoryGenerator::Output moving = update_at(generator, 5'000'000);
+
+generator.set_circle_speed_m_s(0.8f);
+const TrajectoryGenerator::Output changed = update_at(generator, 5'000'000);
+
+EXPECT_EQ(changed.mode, TrajectoryGenerator::Mode::Circle);
+EXPECT_NEAR(changed.position_ned[0], moving.position_ned[0], kTolerance);
+EXPECT_NEAR(changed.position_ned[1], moving.position_ned[1], kTolerance);
+EXPECT_NEAR(norm2(changed.velocity_ned[0], changed.velocity_ned[1]), 0.8f, kTolerance);
+}
+
 TEST(TrajectoryGenerator, RadiusChangeDuringCircleStartsSmoothTransition)
 {
 TrajectoryGenerator generator;

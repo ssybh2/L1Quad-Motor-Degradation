@@ -67,14 +67,26 @@ bool update(const Input &input, Output &output);
 
 void reset();
 void set_commanded_mode(CommandedMode mode);
+void set_takeoff_height_m(float height_m);
+void set_takeoff_duration_s(float duration_s);
 void set_circle_radius_m(float radius_m);
+void set_circle_speed_m_s(float speed_m_s);
+void set_circle_transition_duration_s(float duration_s);
+void set_manual_height_deadzone(float deadzone);
+void set_manual_max_climb_rate_m_s(float climb_rate_m_s);
+void set_manual_min_height_m(float height_m);
+void set_manual_max_height_m(float height_m);
 
 CommandedMode commanded_mode() const { return _commanded_mode; }
-float takeoff_height_m() const { return TAKEOFF_HEIGHT_M; }
-float takeoff_duration_s() const { return TAKEOFF_DURATION_S; }
+float takeoff_height_m() const { return _takeoff_height_m; }
+float takeoff_duration_s() const { return _takeoff_duration_s; }
 float circle_radius_m() const { return _circle_radius_m; }
-float circle_speed_m_s() const { return CIRCLE_SPEED_M_S; }
-float circle_transition_duration_s() const { return CIRCLE_TRANSITION_DURATION_S; }
+float circle_speed_m_s() const { return _circle_speed_m_s; }
+float circle_transition_duration_s() const { return _circle_transition_duration_s; }
+float manual_height_deadzone() const { return _manual_height_deadzone; }
+float manual_max_climb_rate_m_s() const { return _manual_max_climb_rate_m_s; }
+float manual_min_height_m() const { return _manual_min_height_m; }
+float manual_max_height_m() const { return _manual_max_height_m; }
 float circle_period_s() const;
 
 const Input &last_input() const { return _last_input; }
@@ -110,22 +122,21 @@ hrt_abstime _last_update_us{0};
 CommandedMode _commanded_mode{CommandedMode::Hover};
 CircleYawMode _circle_yaw_mode{CircleYawMode::Fixed};
 bool _circle_initialized{false};
-float _circle_radius_m{DEFAULT_CIRCLE_RADIUS_M};
+float _takeoff_height_m{1.0f};
+float _takeoff_duration_s{2.0f};
+float _circle_radius_m{1.0f};
+float _circle_speed_m_s{0.5f};
+float _circle_transition_duration_s{2.0f};
+float _manual_height_deadzone{0.10f};
+float _manual_max_climb_rate_m_s{0.3f};
+float _manual_min_height_m{0.5f};
+float _manual_max_height_m{2.0f};
 float _circle_current_speed_rad_s{0.f};
 float _circle_transition_start_time_s{0.f};
 float _circle_orbit_start_time_s{0.f};
 
-static constexpr float TAKEOFF_HEIGHT_M = 1.0f;
-static constexpr float TAKEOFF_DURATION_S = 2.0f;
-static constexpr float DEFAULT_CIRCLE_RADIUS_M = 1.0f;
 static constexpr float MIN_CIRCLE_RADIUS_M = 0.2f;
 static constexpr float MAX_CIRCLE_RADIUS_M = 20.0f;
-static constexpr float CIRCLE_SPEED_M_S = 0.5f;
-static constexpr float CIRCLE_TRANSITION_DURATION_S = 2.0f;
-static constexpr float MANUAL_HEIGHT_DEADZONE = 0.10f;
-static constexpr float MANUAL_MAX_CLIMB_RATE_M_S = 0.3f;
-static constexpr float MANUAL_MIN_HEIGHT_M = 0.5f;
-static constexpr float MANUAL_MAX_HEIGHT_M = 2.0f;
 
 Input _last_input{};
 Output _last_output{};

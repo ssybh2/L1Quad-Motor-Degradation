@@ -134,16 +134,33 @@ manual_control_setpoint。
 
 六、HITL：Pixhawk 6C Mini + SIH + jMAVSim
 
-HITL 测试必须拆除螺旋桨。先关闭 QGC，避免它抢占飞控 USB。
+HITL 测试必须拆除螺旋桨。不能让 jMAVSim 直接独占飞控 USB，否则
+QGC 虽然能收到飞行数据，但 MAVLink Console 中的 NSH 可能没有回显。
 
-先启动 jMAVSim：
+先关闭 QGC 和旧 jMAVSim。终端 1 启动串口透明桥：
 
-./PX4-Autopilot-v1.17.0-HITL/Tools/simulation/jmavsim/jmavsim_run.sh \
-  -q -s \
-  -d /dev/serial/by-id/usb-Auterion_PX4_FMU_v6C.x_0-if00 \
-  -b 2000000 -o
+python3 ./Ardupoilt-to-PX4/scripts/mavlink_serial_udp_bridge.py \
+  --device /dev/serial/by-id/usb-Auterion_PX4_FMU_v6C.x_0-if00 \
+  --baud 2000000 \
+  --bind-port 14570 \
+  --endpoint 127.0.0.1:14550 \
+  --endpoint 127.0.0.1:14560 \
+  --endpoint 127.0.0.1:14540
 
-保持 jMAVSim 终端运行，再打开 QGC。QGC 通过 UDP 桥接连接飞控。
+保持终端 1 运行。终端 2 通过 UDP 启动 jMAVSim：
+
+./PX4-Autopilot-v1.17.0-MAIN/Tools/simulation/jmavsim/jmavsim_run.sh \
+  -u -p 14560 -s -o
+
+保持两个终端运行，最后打开 QGC。QGC 使用 UDP 14550，jMAVSim 使用
+UDP 14560，独立命令行 NSH 使用 UDP 14540，返回数据统一进入 14570。
+
+QGC MAVLink Console 无回显时，可用终端 3 独立检查：
+
+python3 ./PX4-Autopilot-v1.17.0-MAIN/Tools/mavlink_shell.py \
+  0.0.0.0:14540
+
+看到 NuttShell (NSH) 后说明 Shell 桥接正常。
 
 如果 USB 设备名不同，先查看：
 
@@ -164,7 +181,7 @@ SIH_L_PITCH = 0.131
 THR_MDL_FAC = 0
 L1_MOT1_SCALE = 0.8
 
-飞控重启后，如果 jMAVSim 不再更新，关闭 jMAVSim 并按上述命令重新启动。
+飞控或电脑重启后，按“透明桥、jMAVSim、QGC”的顺序重新启动。
 
 
 七、L1 失效飞行模式
@@ -201,6 +218,14 @@ control_allocator status
 L1 Failure 的 nav_state 为 16。
 L1 Altitude Failure 的 nav_state 为 7。
 
+在 L1 Failure 模式稳定悬停后切换轨迹：
+
+l1_adaptive_control trajectory circle
+l1_adaptive_control trajectory status
+l1_adaptive_control trajectory hover
+
+第一条进入圆轨迹，第三条回到当前位置悬停。
+
 
 八、重新编译
 
@@ -229,66 +254,91 @@ sitl 分支的 Pixhawk 6C Mini 快照：
 make -C ./PX4-Autopilot-v1.17.0 px4_fmu-v6c_default
 
 
-九、main/HITL 控制参数位置
+九、main 控制参数
 
-以下路径都相对于工作区根目录。main 和 HITL 当前使用相同参数值。
+参数定义文件：
 
-机体质量、几何控制增益和惯量：
+./Ardupoilt-to-PX4/l1_adaptive_control/l1_adaptive_control_params.c
 
-./Ardupoilt-to-PX4/l1_adaptive_control/GeometricController.cpp:8-29
+这些数值已改为 PX4 运行时参数，不需要改控制器源码，也不需要为了调参
+重新编译。控制公式、失效模式、轨迹状态机和 yaw 保持逻辑没有改变。
 
-VEHICLE_MASS_KG = 0.62
-KP = [14.0, 15.0, 15.0]
-KV = [1.5, 0.9, 1.1]
-KR = [0.55, 0.35, 0.15]
-KO = [0.035, 0.03, 0.004]
-J = [0.002016, 0.001827, 0.00322]
+圆轨迹：
 
-L1 机体模型、滤波、电机和失效设置：
+L1_CIR_RADIUS = 1.0       半径，m
+L1_CIR_SPEED = 0.5        切向速度，m/s
+L1_CIR_TRANS = 2.0        进入圆轨迹的平滑过渡时间，s
 
-./Ardupoilt-to-PX4/l1_adaptive_control/L1AdaptiveControl.cpp:10-46
+例如把半径改为 1.5 m、速度改为 0.8 m/s：
 
-VEHICLE_MASS_KG = 0.62
-J = [0.002016, 0.001827, 0.00322]
-JINV = [496.03, 547.345, 310.559]
-L1_AS_V = -5.0
-L1_AS_OMEGA = -10.0
-L1_CUTOFF_Q1_THRUST = 10.0
-L1_CUTOFF_Q1_MOMENT = 10.0
-L1_CUTOFF_Q2_MOMENT = 2.0
-MOTOR_COMMAND_MAX = 100.0
-电机推力曲线系数 = 0.0009251、0.021145
-ROLL_ARM_M = 0.175
-PITCH_ARM_M = 0.131
-MAX_YAW_MOMENT_NM = 1.0
-MAX_L1_THRUST_N = 机体重量的 35%
-MAX_L1_ROLL_PITCH_MOMENT_NM = 0.35
-MAX_L1_YAW_MOMENT_NM = 0.20
-FAILED_MOTOR_INSTANCE = 1
+param set L1_CIR_RADIUS 1.5
+param set L1_CIR_SPEED 0.8
 
-修改质量或惯量时必须同时修改上述两个 .cpp 文件。JINV_XX、JINV_YY、
-JINV_ZZ 分别等于三个惯量的倒数，不能作为独立参数随意调整。
+半径和速度可在圆轨迹运行时修改；控制器会保持轨迹连续。建议先小幅增加
+速度并观察位置误差，不要同时大幅修改多个参数。
 
-起飞、圆轨迹和手动高度参数：
+起飞和手动高度：
 
-./Ardupoilt-to-PX4/l1_adaptive_control/TrajectoryGenerator.hpp:113-120
+L1_TKOFF_HGT = 1.0        自动起飞高度，m
+L1_TKOFF_T = 2.0          自动起飞时间，s
+L1_MAN_DZ = 0.10          高度摇杆死区
+L1_MAN_VZ = 0.3           最大升降速度，m/s
+L1_MAN_HMIN = 0.5         最小目标高度，m
+L1_MAN_HMAX = 2.0         最大目标高度，m
+L1_MAN_TOUT = 0.5         手动输入超时，s
 
-TAKEOFF_HEIGHT_M、TAKEOFF_DURATION_S
-CIRCLE_RADIUS_M、CIRCLE_SPEED_M_S
-MANUAL_HEIGHT_DEADZONE、MANUAL_MAX_CLIMB_RATE_M_S
-MANUAL_MIN_HEIGHT_M、MANUAL_MAX_HEIGHT_M
+机体参数：
 
-自动启动开关：
+L1_MASS = 0.62
+L1_JXX = 0.002016
+L1_JYY = 0.001827
+L1_JZZ = 0.00322
+L1_ARM_ROLL = 0.175
+L1_ARM_PITCH = 0.131
 
-./Ardupoilt-to-PX4/l1_adaptive_control/l1_adaptive_control_params.c:10
+JXX、JYY、JZZ 是三个轴的转动惯量，控制器内部自动计算其倒数。质量、
+惯量和机臂必须使用实测或建模值，真机带桨前不要凭感觉修改。
+
+几何控制器增益：
+
+L1_KPX、L1_KPY、L1_KPZ = 14、15、15
+L1_KVX、L1_KVY、L1_KVZ = 1.5、0.9、1.1
+L1_KRX、L1_KRY、L1_KRZ = 0.55、0.35、0.15
+L1_KOX、L1_KOY、L1_KOZ = 0.035、0.03、0.004
+
+L1 自适应参数：
+
+L1_ADAPT_EN = 1
+L1_AS_V = -5
+L1_AS_OMEGA = -10
+L1_Q1_THR = 10
+L1_Q1_MOM = 10
+L1_Q2_MOM = 2
+L1_A_THR_FRAC = 0.35
+L1_A_RP_MAX = 0.35
+L1_A_YAW_MAX = 0.20
+
+电机模型和失效设置：
 
 L1_FAIL_EN = 1
 L1_MOT1_SCALE = 0.8
+L1_MOT_K2 = 0.0009251
+L1_MOT_K1 = 0.021145
+L1_MOT_CMDMAX = 100
+L1_YAW_MMAX = 1.0
 
-上述 constexpr 参数修改后必须重新编译并刷写固件。L1_FAIL_EN 和
-L1_MOT1_SCALE 是 PX4 运行时参数，可以通过 QGC 或 param set 修改，
-不需要重新编译。L1_MOT1_SCALE 表示 Motor 1 剩余输出指令比例；
-真机实际推力比例受 ESC、电机和螺旋桨曲线影响，带桨前必须标定。
+L1_MOT1_SCALE 表示 Motor 1 剩余输出指令比例。真机实际推力比例受 ESC、
+电机和螺旋桨曲线影响，带桨前必须标定。
+
+查看和保存参数：
+
+param show L1_CIR_SPEED
+param show L1_MASS
+param save
+
+除圆轨迹半径和速度外，其他控制、机体和电机参数建议在锁定状态修改。
+每次只改一类参数，保存修改前记录原值；如果需要恢复本版本默认值，可在
+QGC 参数页对单个参数执行 Reset to Default。
 
 
 ==================== 第二部分：排错与安全说明 ====================
@@ -312,9 +362,11 @@ listener input_rc 5 检查。
 检查 L1 是否运行、nav_state 是否为 16 或 7，并检查
 L1_MOT1_SCALE 和 control_allocator status。
 
-jMAVSim Port busy：
+jMAVSim Port busy 或 QGC MAVLink Console 没有回显：
 
-关闭 QGC 和旧 jMAVSim，再严格按“先 jMAVSim、后 QGC”的顺序启动。
+关闭 QGC 和旧 jMAVSim，再严格按“透明桥、jMAVSim、QGC”的顺序启动。
+使用 lsof /dev/ttyACM0 检查时，串口应由 mavlink_serial_udp_bridge.py
+占用，不能由 jMAVSim 的 java 进程直接占用。
 
 Gazebo 出现 gz_frame_id、LED 或无 GCS 警告：
 

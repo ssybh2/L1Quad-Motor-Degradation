@@ -7,42 +7,7 @@
 namespace
 {
 
-static constexpr float VEHICLE_MASS_KG = 0.62f;
 static constexpr float GRAVITY_MSS = 9.80665f;
-
-static constexpr float JXX_KGM2 = 0.002016f;
-static constexpr float JYY_KGM2 = 0.001827f;
-static constexpr float JZZ_KGM2 = 0.00322f;
-
-static constexpr float JINV_XX = 496.03f;
-static constexpr float JINV_YY = 547.345f;
-static constexpr float JINV_ZZ = 310.559f;
-
-static constexpr bool L1_ENABLE = true;
-static constexpr float L1_AS_V = -5.0f;
-static constexpr float L1_AS_OMEGA = -10.0f;
-static constexpr float L1_CUTOFF_Q1_THRUST = 10.0f;
-static constexpr float L1_CUTOFF_Q1_MOMENT = 10.0f;
-static constexpr float L1_CUTOFF_Q2_MOMENT = 2.0f;
-
-// Original L1Quad real-airframe motor curve:
-// thrust [N] = 0.0009251 * command^2 + 0.021145 * command,
-// where command spans 0..100 for PWM 1000..2000 us.
-static constexpr float MOTOR_COMMAND_MAX = 100.0f;
-static constexpr float MAX_MOTOR_THRUST_N =
-	0.0009251f * MOTOR_COMMAND_MAX * MOTOR_COMMAND_MAX
-	+ 0.021145f * MOTOR_COMMAND_MAX;
-static constexpr float MAX_THRUST_N = 4.0f * MAX_MOTOR_THRUST_N;
-static constexpr float ROLL_ARM_M = 0.175f;
-static constexpr float PITCH_ARM_M = 0.131f;
-static constexpr float MAX_ROLL_MOMENT_NM = ROLL_ARM_M * MAX_MOTOR_THRUST_N;
-static constexpr float MAX_PITCH_MOMENT_NM = PITCH_ARM_M * MAX_MOTOR_THRUST_N;
-static constexpr float MAX_YAW_MOMENT_NM = 1.0f;
-
-static constexpr float MAX_L1_THRUST_N = VEHICLE_MASS_KG * GRAVITY_MSS * 0.35f;
-static constexpr float MAX_L1_ROLL_PITCH_MOMENT_NM = 0.35f;
-static constexpr float MAX_L1_YAW_MOMENT_NM = 0.20f;
-static constexpr hrt_abstime MANUAL_CONTROL_TIMEOUT_US = 500000;
 
 float dot3(const float a[3], const float b[3])
 {
@@ -116,7 +81,7 @@ ModuleParams(nullptr),
 ScheduledWorkItem(MODULE_NAME, px4::wq_configurations::nav_and_controllers)
 {
 updateParams();
-_trajectory_generator.set_circle_radius_m(_param_l1_cir_radius.get());
+apply_parameter_values();
 }
 
 L1AdaptiveControl::~L1AdaptiveControl()
@@ -151,7 +116,7 @@ if (_parameter_update_sub.updated()) {
 parameter_update_s parameter_update{};
 _parameter_update_sub.copy(&parameter_update);
 updateParams();
-_trajectory_generator.set_circle_radius_m(_param_l1_cir_radius.get());
+apply_parameter_values();
 }
 
 update_subscriptions();
@@ -175,6 +140,38 @@ _last_print_us = now_us;
 }
 
 perf_end(_loop_perf);
+}
+
+void L1AdaptiveControl::apply_parameter_values()
+{
+_trajectory_generator.set_takeoff_height_m(_param_l1_tkoff_hgt.get());
+_trajectory_generator.set_takeoff_duration_s(_param_l1_tkoff_t.get());
+_trajectory_generator.set_circle_radius_m(_param_l1_cir_radius.get());
+_trajectory_generator.set_circle_speed_m_s(_param_l1_cir_speed.get());
+_trajectory_generator.set_circle_transition_duration_s(_param_l1_cir_trans.get());
+_trajectory_generator.set_manual_height_deadzone(_param_l1_man_dz.get());
+_trajectory_generator.set_manual_max_climb_rate_m_s(_param_l1_man_vz.get());
+_trajectory_generator.set_manual_min_height_m(_param_l1_man_hmin.get());
+_trajectory_generator.set_manual_max_height_m(_param_l1_man_hmax.get());
+
+GeometricController::Parameters parameters{};
+parameters.mass_kg = _param_l1_mass.get();
+parameters.position_gain[0] = _param_l1_kpx.get();
+parameters.position_gain[1] = _param_l1_kpy.get();
+parameters.position_gain[2] = _param_l1_kpz.get();
+parameters.velocity_gain[0] = _param_l1_kvx.get();
+parameters.velocity_gain[1] = _param_l1_kvy.get();
+parameters.velocity_gain[2] = _param_l1_kvz.get();
+parameters.rotation_gain[0] = _param_l1_krx.get();
+parameters.rotation_gain[1] = _param_l1_kry.get();
+parameters.rotation_gain[2] = _param_l1_krz.get();
+parameters.angular_velocity_gain[0] = _param_l1_kox.get();
+parameters.angular_velocity_gain[1] = _param_l1_koy.get();
+parameters.angular_velocity_gain[2] = _param_l1_koz.get();
+parameters.inertia_kg_m2[0] = _param_l1_jxx.get();
+parameters.inertia_kg_m2[1] = _param_l1_jyy.get();
+parameters.inertia_kg_m2[2] = _param_l1_jzz.get();
+_geometric_controller.set_parameters(parameters);
 }
 
 void L1AdaptiveControl::update_subscriptions()
@@ -304,10 +301,12 @@ void L1AdaptiveControl::update_manual_height_control_input()
 	}
 
 	const hrt_abstime now_us = hrt_absolute_time();
+	const hrt_abstime manual_control_timeout_us =
+		static_cast<hrt_abstime>(_param_l1_man_tout.get() * 1e6f);
 	const bool rc_valid = _input_rc.channel_count >= 3
 			      && !_input_rc.rc_lost
 			      && !_input_rc.rc_failsafe
-			      && now_us - _input_rc.timestamp_last_signal <= MANUAL_CONTROL_TIMEOUT_US;
+			      && now_us - _input_rc.timestamp_last_signal <= manual_control_timeout_us;
 
 	if (rc_valid) {
 		const float rc_throttle = (_input_rc.values[2] - 1500.0f) / 500.0f;
@@ -319,7 +318,7 @@ void L1AdaptiveControl::update_manual_height_control_input()
 	const bool joystick_valid = _has_manual_control_setpoint
 				    && _manual_control_setpoint.valid
 				    && PX4_ISFINITE(_manual_control_setpoint.throttle)
-				    && now_us - _manual_control_setpoint.timestamp_sample <= MANUAL_CONTROL_TIMEOUT_US;
+				    && now_us - _manual_control_setpoint.timestamp_sample <= manual_control_timeout_us;
 
 	if (joystick_valid) {
 		_manual_height_stick = math::constrain(_manual_control_setpoint.throttle, -1.0f, 1.0f);
@@ -371,8 +370,10 @@ _controller_input.quat_body_to_ned[i] = _state.quat_body_to_ned[i];
 
 if (_altitude_failure_mode_selected && _has_attitude_setpoint) {
 	const hrt_abstime now_us = hrt_absolute_time();
+	const hrt_abstime manual_control_timeout_us =
+		static_cast<hrt_abstime>(_param_l1_man_tout.get() * 1e6f);
 	const bool attitude_setpoint_valid =
-		now_us - _vehicle_attitude_setpoint.timestamp <= MANUAL_CONTROL_TIMEOUT_US
+		now_us - _vehicle_attitude_setpoint.timestamp <= manual_control_timeout_us
 		&& PX4_ISFINITE(_vehicle_attitude_setpoint.q_d[0])
 		&& PX4_ISFINITE(_vehicle_attitude_setpoint.q_d[1])
 		&& PX4_ISFINITE(_vehicle_attitude_setpoint.q_d[2])
@@ -429,6 +430,24 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 		reset_l1_adaptive_state();
 		return;
 	}
+
+	const float mass_kg = _param_l1_mass.get();
+	const float inertia_kg_m2[3] = {
+		_param_l1_jxx.get(),
+		_param_l1_jyy.get(),
+		_param_l1_jzz.get()
+	};
+	const float inertia_inverse[3] = {
+		1.f / math::max(inertia_kg_m2[0], 1e-6f),
+		1.f / math::max(inertia_kg_m2[1], 1e-6f),
+		1.f / math::max(inertia_kg_m2[2], 1e-6f)
+	};
+	const float as_v = _param_l1_as_v.get();
+	const float as_omega = _param_l1_as_omega.get();
+	const float max_l1_thrust_n = mass_kg * GRAVITY_MSS * _param_l1_a_thr_frac.get();
+	const float max_l1_roll_pitch_moment_nm = _param_l1_a_rp_max.get();
+	const float max_l1_yaw_moment_nm = _param_l1_a_yaw_max.get();
+	const bool l1_enabled = _param_l1_adapt_en.get() != 0;
 
 	float R[3][3]{};
 	quat_to_rotation_matrix_body_to_ned(_state.quat_body_to_ned, R);
@@ -489,10 +508,10 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 
 		velocity_hat[i] = _l1_state.velocity_hat_prev[i]
 				  + (gravity_term
-				     - colz_prev[i] * previous_total_thrust / VEHICLE_MASS_KG
-				     + colx_prev[i] * _l1_state.sigma_unmatched_prev[0] / VEHICLE_MASS_KG
-				     + coly_prev[i] * _l1_state.sigma_unmatched_prev[1] / VEHICLE_MASS_KG
-				     + velocity_prediction_error_prev[i] * L1_AS_V) * dt;
+				     - colz_prev[i] * previous_total_thrust / mass_kg
+				     + colx_prev[i] * _l1_state.sigma_unmatched_prev[0] / mass_kg
+				     + coly_prev[i] * _l1_state.sigma_unmatched_prev[1] / mass_kg
+				     + velocity_prediction_error_prev[i] * as_v) * dt;
 	}
 
 	const float omega_prev[3] = {
@@ -502,9 +521,9 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 	};
 
 	const float j_omega_prev[3] = {
-		JXX_KGM2 * omega_prev[0],
-		JYY_KGM2 * omega_prev[1],
-		JZZ_KGM2 * omega_prev[2]
+		inertia_kg_m2[0] * omega_prev[0],
+		inertia_kg_m2[1] * omega_prev[1],
+		inertia_kg_m2[2] * omega_prev[2]
 	};
 
 	float gyro_moment_prev[3]{};
@@ -516,15 +535,13 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 		_l1_state.baseline_thrust_moment_prev[3] + _l1_state.adaptive_thrust_moment_prev[3] + _l1_state.sigma_matched_prev[3]
 	};
 
-	const float inertia_inverse[3] = {JINV_XX, JINV_YY, JINV_ZZ};
-
 	float angular_velocity_hat[3]{};
 
 	for (int i = 0; i < 3; i++) {
 		angular_velocity_hat[i] = _l1_state.angular_velocity_hat_prev[i]
 					  + (-inertia_inverse[i] * gyro_moment_prev[i]
 					     + inertia_inverse[i] * previous_total_moment[i]
-					     + angular_prediction_error_prev[i] * L1_AS_OMEGA) * dt;
+					     + angular_prediction_error_prev[i] * as_omega) * dt;
 	}
 
 	float velocity_prediction_error[3]{};
@@ -535,8 +552,8 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 	for (int i = 0; i < 3; i++) {
 		velocity_prediction_error[i] = velocity_hat[i] - _state.velocity_ned[i];
 		angular_prediction_error[i] = angular_velocity_hat[i] - _state.angular_velocity_body[i];
-		phi_inv_mu_v[i] = phi_inverse_mu(velocity_prediction_error[i], L1_AS_V, dt);
-		phi_inv_mu_omega[i] = phi_inverse_mu(angular_prediction_error[i], L1_AS_OMEGA, dt);
+		phi_inv_mu_v[i] = phi_inverse_mu(velocity_prediction_error[i], as_v, dt);
+		phi_inv_mu_omega[i] = phi_inverse_mu(angular_prediction_error[i], as_omega, dt);
 	}
 
 	float colx[3]{};
@@ -549,17 +566,17 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 	float sigma_matched[4]{};
 	float sigma_unmatched[2]{};
 
-	sigma_matched[0] = dot3(colz, phi_inv_mu_v) * VEHICLE_MASS_KG;
-	sigma_matched[1] = -JXX_KGM2 * phi_inv_mu_omega[0];
-	sigma_matched[2] = -JYY_KGM2 * phi_inv_mu_omega[1];
-	sigma_matched[3] = -JZZ_KGM2 * phi_inv_mu_omega[2];
+	sigma_matched[0] = dot3(colz, phi_inv_mu_v) * mass_kg;
+	sigma_matched[1] = -inertia_kg_m2[0] * phi_inv_mu_omega[0];
+	sigma_matched[2] = -inertia_kg_m2[1] * phi_inv_mu_omega[1];
+	sigma_matched[3] = -inertia_kg_m2[2] * phi_inv_mu_omega[2];
 
-	sigma_unmatched[0] = -dot3(colx, phi_inv_mu_v) * VEHICLE_MASS_KG;
-	sigma_unmatched[1] = -dot3(coly, phi_inv_mu_v) * VEHICLE_MASS_KG;
+	sigma_unmatched[0] = -dot3(colx, phi_inv_mu_v) * mass_kg;
+	sigma_unmatched[1] = -dot3(coly, phi_inv_mu_v) * mass_kg;
 
-	const float lpf1_thrust_keep = expf(-L1_CUTOFF_Q1_THRUST * dt);
-	const float lpf1_moment_keep = expf(-L1_CUTOFF_Q1_MOMENT * dt);
-	const float lpf2_moment_keep = expf(-L1_CUTOFF_Q2_MOMENT * dt);
+	const float lpf1_thrust_keep = expf(-_param_l1_q1_thr.get() * dt);
+	const float lpf1_moment_keep = expf(-_param_l1_q1_mom.get() * dt);
+	const float lpf2_moment_keep = expf(-_param_l1_q2_mom.get() * dt);
 
 	float lpf1[4]{};
 	float lpf2[4]{};
@@ -573,10 +590,10 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 
 	lpf2[0] = lpf1[0];
 
-	_l1_output_thrust_moment[0] = L1_ENABLE ? math::constrain(-lpf2[0], -MAX_L1_THRUST_N, MAX_L1_THRUST_N) : 0.f;
-	_l1_output_thrust_moment[1] = L1_ENABLE ? math::constrain(-lpf2[1], -MAX_L1_ROLL_PITCH_MOMENT_NM, MAX_L1_ROLL_PITCH_MOMENT_NM) : 0.f;
-	_l1_output_thrust_moment[2] = L1_ENABLE ? math::constrain(-lpf2[2], -MAX_L1_ROLL_PITCH_MOMENT_NM, MAX_L1_ROLL_PITCH_MOMENT_NM) : 0.f;
-	_l1_output_thrust_moment[3] = L1_ENABLE ? math::constrain(-lpf2[3], -MAX_L1_YAW_MOMENT_NM, MAX_L1_YAW_MOMENT_NM) : 0.f;
+	_l1_output_thrust_moment[0] = l1_enabled ? math::constrain(-lpf2[0], -max_l1_thrust_n, max_l1_thrust_n) : 0.f;
+	_l1_output_thrust_moment[1] = l1_enabled ? math::constrain(-lpf2[1], -max_l1_roll_pitch_moment_nm, max_l1_roll_pitch_moment_nm) : 0.f;
+	_l1_output_thrust_moment[2] = l1_enabled ? math::constrain(-lpf2[2], -max_l1_roll_pitch_moment_nm, max_l1_roll_pitch_moment_nm) : 0.f;
+	_l1_output_thrust_moment[3] = l1_enabled ? math::constrain(-lpf2[3], -max_l1_yaw_moment_nm, max_l1_yaw_moment_nm) : 0.f;
 
 	for (int i = 0; i < 4; i++) {
 		_l1_state.baseline_thrust_moment_prev[i] = baseline_thrust_moment[i];
@@ -587,8 +604,8 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 		_combined_thrust_moment[i] = baseline_thrust_moment[i] + _l1_output_thrust_moment[i];
 	}
 
-	sigma_unmatched[0] = math::constrain(sigma_unmatched[0], -MAX_L1_THRUST_N, MAX_L1_THRUST_N);
-	sigma_unmatched[1] = math::constrain(sigma_unmatched[1], -MAX_L1_THRUST_N, MAX_L1_THRUST_N);
+	sigma_unmatched[0] = math::constrain(sigma_unmatched[0], -max_l1_thrust_n, max_l1_thrust_n);
+	sigma_unmatched[1] = math::constrain(sigma_unmatched[1], -max_l1_thrust_n, max_l1_thrust_n);
 
 	_l1_state.sigma_unmatched_prev[0] = sigma_unmatched[0];
 	_l1_state.sigma_unmatched_prev[1] = sigma_unmatched[1];
@@ -621,21 +638,31 @@ void L1AdaptiveControl::publish_control_setpoints()
 		return;
 	}
 
-	const float thrust_n = math::constrain(_combined_thrust_moment[0], 0.f, MAX_THRUST_N);
+	const float motor_command_max = _param_l1_mot_cmdmax.get();
+	const float max_motor_thrust_n =
+		_param_l1_mot_k2.get() * motor_command_max * motor_command_max
+		+ _param_l1_mot_k1.get() * motor_command_max;
+	const float max_thrust_n = math::max(4.f * max_motor_thrust_n, 1e-3f);
+	const float max_roll_moment_nm =
+		math::max(_param_l1_arm_roll.get() * max_motor_thrust_n, 1e-3f);
+	const float max_pitch_moment_nm =
+		math::max(_param_l1_arm_pitch.get() * max_motor_thrust_n, 1e-3f);
+	const float max_yaw_moment_nm = math::max(_param_l1_yaw_mmax.get(), 1e-3f);
+	const float thrust_n = math::constrain(_combined_thrust_moment[0], 0.f, max_thrust_n);
 
 	vehicle_thrust_setpoint_s thrust_sp{};
 	thrust_sp.timestamp = hrt_absolute_time();
 	thrust_sp.timestamp_sample = _vehicle_angular_velocity.timestamp_sample;
 	thrust_sp.xyz[0] = 0.f;
 	thrust_sp.xyz[1] = 0.f;
-	thrust_sp.xyz[2] = -math::constrain(thrust_n / MAX_THRUST_N, 0.f, 1.f);
+	thrust_sp.xyz[2] = -math::constrain(thrust_n / max_thrust_n, 0.f, 1.f);
 
 	vehicle_torque_setpoint_s torque_sp{};
 	torque_sp.timestamp = thrust_sp.timestamp;
 	torque_sp.timestamp_sample = thrust_sp.timestamp_sample;
-	torque_sp.xyz[0] = math::constrain(_combined_thrust_moment[1] / MAX_ROLL_MOMENT_NM, -1.f, 1.f);
-	torque_sp.xyz[1] = math::constrain(_combined_thrust_moment[2] / MAX_PITCH_MOMENT_NM, -1.f, 1.f);
-	torque_sp.xyz[2] = math::constrain(_combined_thrust_moment[3] / MAX_YAW_MOMENT_NM, -1.f, 1.f);
+	torque_sp.xyz[0] = math::constrain(_combined_thrust_moment[1] / max_roll_moment_nm, -1.f, 1.f);
+	torque_sp.xyz[1] = math::constrain(_combined_thrust_moment[2] / max_pitch_moment_nm, -1.f, 1.f);
+	torque_sp.xyz[2] = math::constrain(_combined_thrust_moment[3] / max_yaw_moment_nm, -1.f, 1.f);
 
 	_vehicle_thrust_setpoint_pub.publish(thrust_sp);
 	_vehicle_torque_setpoint_pub.publish(torque_sp);
@@ -737,9 +764,10 @@ PX4_INFO("  trajectory: mode=%u valid=%d target_z=%.3f target_vz=%.3f elapsed=%.
  (double)_trajectory_output.velocity_ned[2],
  (double)_trajectory_output.elapsed_time_s);
 
-PX4_INFO("  trajectory command: %s radius=%.2fm",
+PX4_INFO("  trajectory command: %s radius=%.2fm speed=%.2fm/s",
  trajectory_mode() == TrajectoryGenerator::CommandedMode::Circle ? "circle" : "hover",
- (double)_trajectory_generator.circle_radius_m());
+ (double)_trajectory_generator.circle_radius_m(),
+ (double)_trajectory_generator.circle_speed_m_s());
 
 PX4_INFO("  rc height: enabled=%d received=%d valid=%d throttle=%.3f",
  (int)_rc_height_control_enabled.load(),
@@ -838,7 +866,9 @@ return -1;
 if (argc < 2 || !strcmp(argv[1], "status")) {
 PX4_INFO("Trajectory command: %s",
  instance->trajectory_mode() == TrajectoryGenerator::CommandedMode::Circle ? "circle" : "hover");
-PX4_INFO("  radius: %.2fm", (double)instance->_trajectory_generator.circle_radius_m());
+PX4_INFO("  radius: %.2fm speed: %.2fm/s",
+	 (double)instance->_trajectory_generator.circle_radius_m(),
+	 (double)instance->_trajectory_generator.circle_speed_m_s());
 PX4_INFO("  output: mode=%u valid=%d pos=[%.3f %.3f %.3f] vel=[%.3f %.3f %.3f] yaw=%.3f",
  (unsigned)instance->_trajectory_output.mode,
  (int)instance->_trajectory_output.valid,

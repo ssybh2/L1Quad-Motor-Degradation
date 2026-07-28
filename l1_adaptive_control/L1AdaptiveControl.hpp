@@ -93,6 +93,7 @@ float lpf2_prev[4]{0.f, 0.f, 0.f, 0.f};
 
 void Run() override;
 
+void apply_parameter_values();
 void update_subscriptions();
 void update_internal_state();
 
@@ -169,7 +170,47 @@ bool _control_setpoint_published{false};
 uint32_t _control_setpoint_publish_count{0};
 
 DEFINE_PARAMETERS(
-(ParamFloat<px4::params::L1_CIR_RADIUS>) _param_l1_cir_radius
+(ParamFloat<px4::params::L1_CIR_RADIUS>) _param_l1_cir_radius,
+(ParamFloat<px4::params::L1_CIR_SPEED>) _param_l1_cir_speed,
+(ParamFloat<px4::params::L1_CIR_TRANS>) _param_l1_cir_trans,
+(ParamFloat<px4::params::L1_TKOFF_HGT>) _param_l1_tkoff_hgt,
+(ParamFloat<px4::params::L1_TKOFF_T>) _param_l1_tkoff_t,
+(ParamFloat<px4::params::L1_MAN_DZ>) _param_l1_man_dz,
+(ParamFloat<px4::params::L1_MAN_VZ>) _param_l1_man_vz,
+(ParamFloat<px4::params::L1_MAN_HMIN>) _param_l1_man_hmin,
+(ParamFloat<px4::params::L1_MAN_HMAX>) _param_l1_man_hmax,
+(ParamFloat<px4::params::L1_MAN_TOUT>) _param_l1_man_tout,
+(ParamFloat<px4::params::L1_MASS>) _param_l1_mass,
+(ParamFloat<px4::params::L1_JXX>) _param_l1_jxx,
+(ParamFloat<px4::params::L1_JYY>) _param_l1_jyy,
+(ParamFloat<px4::params::L1_JZZ>) _param_l1_jzz,
+(ParamFloat<px4::params::L1_KPX>) _param_l1_kpx,
+(ParamFloat<px4::params::L1_KPY>) _param_l1_kpy,
+(ParamFloat<px4::params::L1_KPZ>) _param_l1_kpz,
+(ParamFloat<px4::params::L1_KVX>) _param_l1_kvx,
+(ParamFloat<px4::params::L1_KVY>) _param_l1_kvy,
+(ParamFloat<px4::params::L1_KVZ>) _param_l1_kvz,
+(ParamFloat<px4::params::L1_KRX>) _param_l1_krx,
+(ParamFloat<px4::params::L1_KRY>) _param_l1_kry,
+(ParamFloat<px4::params::L1_KRZ>) _param_l1_krz,
+(ParamFloat<px4::params::L1_KOX>) _param_l1_kox,
+(ParamFloat<px4::params::L1_KOY>) _param_l1_koy,
+(ParamFloat<px4::params::L1_KOZ>) _param_l1_koz,
+(ParamInt<px4::params::L1_ADAPT_EN>) _param_l1_adapt_en,
+(ParamFloat<px4::params::L1_AS_V>) _param_l1_as_v,
+(ParamFloat<px4::params::L1_AS_OMEGA>) _param_l1_as_omega,
+(ParamFloat<px4::params::L1_Q1_THR>) _param_l1_q1_thr,
+(ParamFloat<px4::params::L1_Q1_MOM>) _param_l1_q1_mom,
+(ParamFloat<px4::params::L1_Q2_MOM>) _param_l1_q2_mom,
+(ParamFloat<px4::params::L1_A_THR_FRAC>) _param_l1_a_thr_frac,
+(ParamFloat<px4::params::L1_A_RP_MAX>) _param_l1_a_rp_max,
+(ParamFloat<px4::params::L1_A_YAW_MAX>) _param_l1_a_yaw_max,
+(ParamFloat<px4::params::L1_MOT_K2>) _param_l1_mot_k2,
+(ParamFloat<px4::params::L1_MOT_K1>) _param_l1_mot_k1,
+(ParamFloat<px4::params::L1_MOT_CMDMAX>) _param_l1_mot_cmdmax,
+(ParamFloat<px4::params::L1_ARM_ROLL>) _param_l1_arm_roll,
+(ParamFloat<px4::params::L1_ARM_PITCH>) _param_l1_arm_pitch,
+(ParamFloat<px4::params::L1_YAW_MMAX>) _param_l1_yaw_mmax
 )
 
 perf_counter_t _loop_perf{perf_alloc(PC_ELAPSED, MODULE_NAME": cycle")};

@@ -5,28 +5,7 @@
 namespace
 {
 
-static constexpr float VEHICLE_MASS_KG = 0.62f;
 static constexpr float GRAVITY_MSS = 9.80665f;
-
-static constexpr float KP_X = 14.0f;
-static constexpr float KP_Y = 15.0f;
-static constexpr float KP_Z = 15.0f;
-
-static constexpr float KV_X = 1.5f;
-static constexpr float KV_Y = 0.9f;
-static constexpr float KV_Z = 1.1f;
-
-static constexpr float KR_X = 0.55f;
-static constexpr float KR_Y = 0.35f;
-static constexpr float KR_Z = 0.15f;
-
-static constexpr float KO_X = 0.035f;
-static constexpr float KO_Y = 0.03f;
-static constexpr float KO_Z = 0.004f;
-
-static constexpr float JXX_KGM2 = 0.002016f;
-static constexpr float JYY_KGM2 = 0.001827f;
-static constexpr float JZZ_KGM2 = 0.00322f;
 
 float dot3(const float a[3], const float b[3])
 {
@@ -176,11 +155,11 @@ out[1] = M[0][2];
 out[2] = M[1][0];
 }
 
-void inertia_mul(const float v[3], float out[3])
+void inertia_mul(const float inertia_kg_m2[3], const float v[3], float out[3])
 {
-out[0] = JXX_KGM2 * v[0];
-out[1] = JYY_KGM2 * v[1];
-out[2] = JZZ_KGM2 * v[2];
+out[0] = inertia_kg_m2[0] * v[0];
+out[1] = inertia_kg_m2[1] * v[1];
+out[2] = inertia_kg_m2[2] * v[2];
 }
 
 void compute_rotation_error(const float R[3][3], const float Rd[3][3], float eR[3])
@@ -287,6 +266,11 @@ bool GeometricController::update(const Input &input, Output &output)
 _last_input = input;
 output = Output{};
 output.timestamp_us = input.timestamp_us;
+const float mass_kg = _parameters.mass_kg;
+const float *kp = _parameters.position_gain;
+const float *kv = _parameters.velocity_gain;
+const float *kr = _parameters.rotation_gain;
+const float *ko = _parameters.angular_velocity_gain;
 
 if (!input.state_valid_for_control || !input.armed || input.failsafe) {
 output.valid = false;
@@ -300,19 +284,19 @@ output.velocity_error_ned[i] = input.velocity_ned[i] - input.target_velocity_ned
 }
 
 output.target_force_ned[0] =
-VEHICLE_MASS_KG * input.target_acceleration_ned[0]
-- KP_X * output.position_error_ned[0]
-- KV_X * output.velocity_error_ned[0];
+mass_kg * input.target_acceleration_ned[0]
+- kp[0] * output.position_error_ned[0]
+- kv[0] * output.velocity_error_ned[0];
 
 output.target_force_ned[1] =
-VEHICLE_MASS_KG * input.target_acceleration_ned[1]
-- KP_Y * output.position_error_ned[1]
-- KV_Y * output.velocity_error_ned[1];
+mass_kg * input.target_acceleration_ned[1]
+- kp[1] * output.position_error_ned[1]
+- kv[1] * output.velocity_error_ned[1];
 
 output.target_force_ned[2] =
-VEHICLE_MASS_KG * (input.target_acceleration_ned[2] - GRAVITY_MSS)
-- KP_Z * output.position_error_ned[2]
-- KV_Z * output.velocity_error_ned[2];
+mass_kg * (input.target_acceleration_ned[2] - GRAVITY_MSS)
+- kp[2] * output.position_error_ned[2]
+- kv[2] * output.velocity_error_ned[2];
 
 if (input.manual_tilt_enabled) {
 const float vertical_force_ned = output.target_force_ned[2];
@@ -347,32 +331,32 @@ output.thrust_newton = input.yaw_control_enabled
 	: sqrtf(dot3(output.target_force_ned, output.target_force_ned));
 
 output.acceleration_error_ned[0] =
--output.body_z_axis_ned[0] * output.thrust_newton / VEHICLE_MASS_KG
+-output.body_z_axis_ned[0] * output.thrust_newton / mass_kg
 - input.target_acceleration_ned[0];
 
 output.acceleration_error_ned[1] =
--output.body_z_axis_ned[1] * output.thrust_newton / VEHICLE_MASS_KG
+-output.body_z_axis_ned[1] * output.thrust_newton / mass_kg
 - input.target_acceleration_ned[1];
 
 output.acceleration_error_ned[2] =
 GRAVITY_MSS
-- output.body_z_axis_ned[2] * output.thrust_newton / VEHICLE_MASS_KG
+- output.body_z_axis_ned[2] * output.thrust_newton / mass_kg
 - input.target_acceleration_ned[2];
 
 output.target_force_dot_ned[0] =
--KP_X * output.velocity_error_ned[0]
--KV_X * output.acceleration_error_ned[0]
-+ VEHICLE_MASS_KG * input.target_jerk_ned[0];
+-kp[0] * output.velocity_error_ned[0]
+-kv[0] * output.acceleration_error_ned[0]
++ mass_kg * input.target_jerk_ned[0];
 
 output.target_force_dot_ned[1] =
--KP_Y * output.velocity_error_ned[1]
--KV_Y * output.acceleration_error_ned[1]
-+ VEHICLE_MASS_KG * input.target_jerk_ned[1];
+-kp[1] * output.velocity_error_ned[1]
+-kv[1] * output.acceleration_error_ned[1]
++ mass_kg * input.target_jerk_ned[1];
 
 output.target_force_dot_ned[2] =
--KP_Z * output.velocity_error_ned[2]
--KV_Z * output.acceleration_error_ned[2]
-+ VEHICLE_MASS_KG * input.target_jerk_ned[2];
+-kp[2] * output.velocity_error_ned[2]
+-kv[2] * output.acceleration_error_ned[2]
++ mass_kg * input.target_jerk_ned[2];
 
 if (input.manual_tilt_enabled) {
 output.target_force_dot_ned[0] = 0.f;
@@ -396,34 +380,34 @@ output.target_thrust_dot_newton_s = 0.f;
 }
 
 output.jerk_error_ned[0] =
--output.body_z_axis_ned[0] * output.target_thrust_dot_newton_s / VEHICLE_MASS_KG
--output.body_z_axis_dot_ned[0] * output.thrust_newton / VEHICLE_MASS_KG
+-output.body_z_axis_ned[0] * output.target_thrust_dot_newton_s / mass_kg
+-output.body_z_axis_dot_ned[0] * output.thrust_newton / mass_kg
 -input.target_jerk_ned[0];
 
 output.jerk_error_ned[1] =
--output.body_z_axis_ned[1] * output.target_thrust_dot_newton_s / VEHICLE_MASS_KG
--output.body_z_axis_dot_ned[1] * output.thrust_newton / VEHICLE_MASS_KG
+-output.body_z_axis_ned[1] * output.target_thrust_dot_newton_s / mass_kg
+-output.body_z_axis_dot_ned[1] * output.thrust_newton / mass_kg
 -input.target_jerk_ned[1];
 
 output.jerk_error_ned[2] =
--output.body_z_axis_ned[2] * output.target_thrust_dot_newton_s / VEHICLE_MASS_KG
--output.body_z_axis_dot_ned[2] * output.thrust_newton / VEHICLE_MASS_KG
+-output.body_z_axis_ned[2] * output.target_thrust_dot_newton_s / mass_kg
+-output.body_z_axis_dot_ned[2] * output.thrust_newton / mass_kg
 -input.target_jerk_ned[2];
 
 output.target_force_ddot_ned[0] =
--KP_X * output.acceleration_error_ned[0]
--KV_X * output.jerk_error_ned[0]
-+ VEHICLE_MASS_KG * input.target_snap_ned[0];
+-kp[0] * output.acceleration_error_ned[0]
+-kv[0] * output.jerk_error_ned[0]
++ mass_kg * input.target_snap_ned[0];
 
 output.target_force_ddot_ned[1] =
--KP_Y * output.acceleration_error_ned[1]
--KV_Y * output.jerk_error_ned[1]
-+ VEHICLE_MASS_KG * input.target_snap_ned[1];
+-kp[1] * output.acceleration_error_ned[1]
+-kv[1] * output.jerk_error_ned[1]
++ mass_kg * input.target_snap_ned[1];
 
 output.target_force_ddot_ned[2] =
--KP_Z * output.acceleration_error_ned[2]
--KV_Z * output.jerk_error_ned[2]
-+ VEHICLE_MASS_KG * input.target_snap_ned[2];
+-kp[2] * output.acceleration_error_ned[2]
+-kv[2] * output.jerk_error_ned[2]
++ mass_kg * input.target_snap_ned[2];
 
 if (input.manual_tilt_enabled) {
 output.target_force_ddot_ned[0] = 0.f;
@@ -628,16 +612,16 @@ output.angular_velocity_error[2] = 0.f;
 }
 
 output.pd_moment_newton_meter[0] =
--KR_X * output.rotation_error[0]
--KO_X * output.angular_velocity_error[0];
+-kr[0] * output.rotation_error[0]
+-ko[0] * output.angular_velocity_error[0];
 
 output.pd_moment_newton_meter[1] =
--KR_Y * output.rotation_error[1]
--KO_Y * output.angular_velocity_error[1];
+-kr[1] * output.rotation_error[1]
+-ko[1] * output.angular_velocity_error[1];
 
 output.pd_moment_newton_meter[2] =
 input.yaw_control_enabled
-? -KR_Z * output.rotation_error[2] - KO_Z * output.angular_velocity_error[2]
+? -kr[2] * output.rotation_error[2] - ko[2] * output.angular_velocity_error[2]
 : 0.f;
 
 float omega_hat[3][3]{};
@@ -652,13 +636,13 @@ omega_hat_rt_rd_omega_d[2] - RT_Rd_omega_d_dot[2]
 };
 
 float j_feedforward_argument[3]{};
-inertia_mul(feedforward_argument, j_feedforward_argument);
+inertia_mul(_parameters.inertia_kg_m2, feedforward_argument, j_feedforward_argument);
 
 for (int i = 0; i < 3; i++) {
 output.feedforward_moment_newton_meter[i] = -j_feedforward_argument[i];
 }
 
-inertia_mul(input.angular_velocity_body, output.j_omega_body);
+inertia_mul(_parameters.inertia_kg_m2, input.angular_velocity_body, output.j_omega_body);
 cross3(input.angular_velocity_body,
        output.j_omega_body,
        output.gyro_moment_newton_meter);
