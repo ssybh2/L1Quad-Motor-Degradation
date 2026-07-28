@@ -23,3 +23,18 @@ PARAM_DEFINE_INT32(L1_FAIL_EN, 1);
  * @group L1 Adaptive Control
  */
 PARAM_DEFINE_FLOAT(L1_MOT1_SCALE, 0.8f);
+
+/**
+ * Circle trajectory radius
+ *
+ * The new value is applied while the module is running. If it changes during
+ * a circle, the trajectory smoothly transitions to the new radius.
+ *
+ * @unit m
+ * @min 0.2
+ * @max 20.0
+ * @decimal 2
+ * @increment 0.1
+ * @group L1 Adaptive Control
+ */
+PARAM_DEFINE_FLOAT(L1_CIR_RADIUS, 1.0f);

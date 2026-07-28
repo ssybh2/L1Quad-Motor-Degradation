@@ -117,7 +117,7 @@ EXPECT_FLOAT_EQ(descend.velocity_ned[2], 0.3f);
 EXPECT_FLOAT_EQ(descend.position_ned[2], -1.f);
 }
 
-TEST(TrajectoryGenerator, ManualHeightControlHoldsOnDeadzoneAndDisablesToDefaultHover)
+TEST(TrajectoryGenerator, ManualHeightControlHoldsOnDeadzoneAndDisablesToCurrentHover)
 {
 TrajectoryGenerator generator;
 
@@ -132,8 +132,34 @@ EXPECT_FLOAT_EQ(deadzone.position_ned[2], -1.03f);
 
 const TrajectoryGenerator::Output disabled = update_at(generator, 5'000'000, false, false, 1.f);
 EXPECT_EQ(disabled.mode, TrajectoryGenerator::Mode::Hover);
-EXPECT_FLOAT_EQ(disabled.position_ned[2], -1.f);
+EXPECT_FLOAT_EQ(disabled.position_ned[2], -1.03f);
 EXPECT_FLOAT_EQ(disabled.velocity_ned[2], 0.f);
+}
+
+TEST(TrajectoryGenerator, CircleTransitionsFromHoverToOriginalStartPoint)
+{
+TrajectoryGenerator generator;
+
+update_at(generator, 0);
+update_at(generator, 2'000'000);
+generator.set_commanded_mode(TrajectoryGenerator::CommandedMode::Circle);
+
+const TrajectoryGenerator::Output start = update_at(generator, 2'000'000);
+const TrajectoryGenerator::Output midpoint = update_at(generator, 3'000'000);
+const TrajectoryGenerator::Output circle = update_at(generator, 4'000'000);
+const float radius = generator.circle_radius_m();
+
+EXPECT_EQ(start.mode, TrajectoryGenerator::Mode::CircleTransition);
+EXPECT_NEAR(start.position_ned[0], 0.f, kTolerance);
+EXPECT_NEAR(start.position_ned[1], 0.f, kTolerance);
+
+EXPECT_EQ(midpoint.mode, TrajectoryGenerator::Mode::CircleTransition);
+EXPECT_NEAR(midpoint.position_ned[0], 0.f, kTolerance);
+EXPECT_NEAR(midpoint.position_ned[1], -0.5f * radius, kTolerance);
+
+EXPECT_EQ(circle.mode, TrajectoryGenerator::Mode::Circle);
+EXPECT_NEAR(circle.position_ned[0], 0.f, kTolerance);
+EXPECT_NEAR(circle.position_ned[1], -radius, kTolerance);
 }
 
 TEST(TrajectoryGenerator, CircleFixedYawDerivativesAreConsistent)
@@ -143,20 +169,21 @@ TrajectoryGenerator generator;
 update_at(generator, 0);
 update_at(generator, 2'000'000);
 generator.set_commanded_mode(TrajectoryGenerator::CommandedMode::Circle);
+update_at(generator, 2'000'000);
 
-const TrajectoryGenerator::Output circle = update_at(generator, 2'000'000);
+const TrajectoryGenerator::Output circle = update_at(generator, 4'000'000);
 const float radius = generator.circle_radius_m();
 const float speed = generator.circle_speed_m_s();
 const float omega = speed / radius;
 
 EXPECT_EQ(circle.mode, TrajectoryGenerator::Mode::Circle);
-EXPECT_NEAR(circle.position_ned[0], radius, kTolerance);
-EXPECT_NEAR(circle.position_ned[1], 0.f, kTolerance);
+EXPECT_NEAR(circle.position_ned[0], 0.f, kTolerance);
+EXPECT_NEAR(circle.position_ned[1], -radius, kTolerance);
 EXPECT_NEAR(circle.position_ned[2], -generator.takeoff_height_m(), kTolerance);
-EXPECT_NEAR(circle.velocity_ned[0], 0.f, kTolerance);
-EXPECT_NEAR(circle.velocity_ned[1], speed, kTolerance);
-EXPECT_NEAR(circle.acceleration_ned[0], -radius * omega * omega, kTolerance);
-EXPECT_NEAR(circle.acceleration_ned[1], 0.f, kTolerance);
+EXPECT_NEAR(circle.velocity_ned[0], speed, kTolerance);
+EXPECT_NEAR(circle.velocity_ned[1], 0.f, kTolerance);
+EXPECT_NEAR(circle.acceleration_ned[0], 0.f, kTolerance);
+EXPECT_NEAR(circle.acceleration_ned[1], radius * omega * omega, kTolerance);
 EXPECT_NEAR(dot2(circle.position_ned[0], circle.position_ned[1],
 		 circle.velocity_ned[0], circle.velocity_ned[1]), 0.f, kTolerance);
 EXPECT_NEAR(norm2(circle.velocity_ned[0], circle.velocity_ned[1]), speed, kTolerance);
@@ -170,10 +197,11 @@ TrajectoryGenerator generator;
 update_at(generator, 0);
 update_at(generator, 2'000'000);
 generator.set_commanded_mode(TrajectoryGenerator::CommandedMode::Circle);
+update_at(generator, 2'000'000);
 
-const TrajectoryGenerator::Output start = update_at(generator, 2'000'000);
-const TrajectoryGenerator::Output initialized = update_at(generator, 2'000'000, true, true, 0.f);
-const TrajectoryGenerator::Output climb = update_at(generator, 3'000'000, true, true, 1.f);
+const TrajectoryGenerator::Output start = update_at(generator, 4'000'000);
+const TrajectoryGenerator::Output initialized = update_at(generator, 4'000'000, true, true, 0.f);
+const TrajectoryGenerator::Output climb = update_at(generator, 5'000'000, true, true, 1.f);
 
 EXPECT_EQ(initialized.mode, TrajectoryGenerator::Mode::Circle);
 EXPECT_EQ(climb.mode, TrajectoryGenerator::Mode::Circle);
@@ -195,13 +223,14 @@ TrajectoryGenerator generator;
 update_at(generator, 0);
 update_at(generator, 2'000'000);
 generator.set_commanded_mode(TrajectoryGenerator::CommandedMode::Circle);
+update_at(generator, 2'000'000);
 
-update_at(generator, 2'000'000, true, true, 0.f);
+update_at(generator, 4'000'000, true, true, 0.f);
 
 TrajectoryGenerator::Output climb{};
 
 for (int i = 1; i <= 10; i++) {
-	climb = update_at(generator, 2'000'000 + static_cast<hrt_abstime>(i * 100'000), true, true, 1.f);
+	climb = update_at(generator, 4'000'000 + static_cast<hrt_abstime>(i * 100'000), true, true, 1.f);
 }
 
 EXPECT_EQ(climb.mode, TrajectoryGenerator::Mode::Circle);
@@ -209,12 +238,12 @@ EXPECT_NEAR(climb.position_ned[2], -1.3f, kTolerance);
 EXPECT_NEAR(climb.velocity_ned[2], -0.3f, kTolerance);
 EXPECT_NEAR(norm2(climb.velocity_ned[0], climb.velocity_ned[1]), generator.circle_speed_m_s(), kTolerance);
 
-const TrajectoryGenerator::Output hold = update_at(generator, 3'100'000, true, true, 0.f);
+const TrajectoryGenerator::Output hold = update_at(generator, 5'100'000, true, true, 0.f);
 EXPECT_EQ(hold.mode, TrajectoryGenerator::Mode::Circle);
 EXPECT_NEAR(hold.position_ned[2], climb.position_ned[2], kTolerance);
 EXPECT_NEAR(hold.velocity_ned[2], 0.f, kTolerance);
 EXPECT_NEAR(norm2(hold.velocity_ned[0], hold.velocity_ned[1]), generator.circle_speed_m_s(), kTolerance);
-EXPECT_GT(fabsf(hold.position_ned[1]), fabsf(climb.position_ned[1]));
+EXPECT_GT(fabsf(hold.position_ned[0]), fabsf(climb.position_ned[0]));
 }
 
 TEST(TrajectoryGenerator, CircleReturnsNearStartAfterOnePeriod)
@@ -224,10 +253,11 @@ TrajectoryGenerator generator;
 update_at(generator, 0);
 update_at(generator, 2'000'000);
 generator.set_commanded_mode(TrajectoryGenerator::CommandedMode::Circle);
+update_at(generator, 2'000'000);
 
-const TrajectoryGenerator::Output start = update_at(generator, 2'000'000);
+const TrajectoryGenerator::Output start = update_at(generator, 4'000'000);
 const hrt_abstime period_us = static_cast<hrt_abstime>(generator.circle_period_s() * 1e6f);
-const TrajectoryGenerator::Output end = update_at(generator, 2'000'000 + period_us);
+const TrajectoryGenerator::Output end = update_at(generator, 4'000'000 + period_us);
 
 EXPECT_EQ(end.mode, TrajectoryGenerator::Mode::Circle);
 
@@ -251,11 +281,11 @@ generator.set_commanded_mode(TrajectoryGenerator::CommandedMode::Circle);
 
 update_at(generator, 10'000'000);
 update_at(generator, 12'000'000);
-const TrajectoryGenerator::Output circle = update_at(generator, 12'000'000);
+const TrajectoryGenerator::Output circle = update_at(generator, 14'000'000);
 
 EXPECT_EQ(circle.mode, TrajectoryGenerator::Mode::Circle);
-EXPECT_NEAR(circle.position_ned[0], generator.circle_radius_m(), kTolerance);
-EXPECT_NEAR(circle.position_ned[1], 0.f, kTolerance);
+EXPECT_NEAR(circle.position_ned[0], 0.f, kTolerance);
+EXPECT_NEAR(circle.position_ned[1], -generator.circle_radius_m(), kTolerance);
 }
 
 TEST(TrajectoryGenerator, FixedYawCircleKeepsYawRateAndAccelerationZero)
@@ -265,6 +295,7 @@ TrajectoryGenerator generator;
 update_at(generator, 0);
 update_at(generator, 2'000'000);
 generator.set_commanded_mode(TrajectoryGenerator::CommandedMode::Circle);
+update_at(generator, 2'000'000);
 
 const TrajectoryGenerator::Output circle = update_at(generator, 4'000'000);
 
@@ -272,4 +303,72 @@ EXPECT_EQ(circle.mode, TrajectoryGenerator::Mode::Circle);
 EXPECT_NEAR(circle.yaw, 0.25f, kTolerance);
 EXPECT_NEAR(circle.yaw_rate, 0.f, kTolerance);
 EXPECT_NEAR(circle.yaw_accel, 0.f, kTolerance);
+}
+
+TEST(TrajectoryGenerator, HoverIsZeroSpeedCircleAtCurrentTarget)
+{
+TrajectoryGenerator generator;
+
+update_at(generator, 0);
+update_at(generator, 2'000'000);
+generator.set_commanded_mode(TrajectoryGenerator::CommandedMode::Circle);
+update_at(generator, 2'000'000);
+const TrajectoryGenerator::Output moving = update_at(generator, 5'000'000);
+
+generator.set_commanded_mode(TrajectoryGenerator::CommandedMode::Hover);
+const TrajectoryGenerator::Output hover = update_at(generator, 5'000'000);
+
+EXPECT_EQ(hover.mode, TrajectoryGenerator::Mode::Hover);
+
+for (int i = 0; i < 3; i++) {
+EXPECT_NEAR(hover.position_ned[i], moving.position_ned[i], kTolerance);
+EXPECT_NEAR(hover.velocity_ned[i], 0.f, kTolerance);
+EXPECT_NEAR(hover.acceleration_ned[i], 0.f, kTolerance);
+EXPECT_NEAR(hover.jerk_ned[i], 0.f, kTolerance);
+EXPECT_NEAR(hover.snap_ned[i], 0.f, kTolerance);
+}
+}
+
+TEST(TrajectoryGenerator, ConfigurableRadiusChangesCircleGeometryAndPeriod)
+{
+TrajectoryGenerator generator;
+generator.set_circle_radius_m(2.f);
+
+EXPECT_FLOAT_EQ(generator.circle_radius_m(), 2.f);
+EXPECT_NEAR(generator.circle_period_s(), 2.f * 3.14159265358979323846f * 2.f / generator.circle_speed_m_s(),
+	    kTolerance);
+
+update_at(generator, 0);
+update_at(generator, 2'000'000);
+generator.set_commanded_mode(TrajectoryGenerator::CommandedMode::Circle);
+update_at(generator, 2'000'000);
+const TrajectoryGenerator::Output circle = update_at(generator, 4'000'000);
+
+EXPECT_EQ(circle.mode, TrajectoryGenerator::Mode::Circle);
+EXPECT_NEAR(circle.position_ned[0], 0.f, kTolerance);
+EXPECT_NEAR(circle.position_ned[1], -2.f, kTolerance);
+}
+
+TEST(TrajectoryGenerator, RadiusChangeDuringCircleStartsSmoothTransition)
+{
+TrajectoryGenerator generator;
+
+update_at(generator, 0);
+update_at(generator, 2'000'000);
+generator.set_commanded_mode(TrajectoryGenerator::CommandedMode::Circle);
+update_at(generator, 2'000'000);
+update_at(generator, 4'000'000);
+const TrajectoryGenerator::Output moving = update_at(generator, 5'000'000);
+
+generator.set_circle_radius_m(2.f);
+const TrajectoryGenerator::Output transition = update_at(generator, 5'000'000);
+
+EXPECT_EQ(transition.mode, TrajectoryGenerator::Mode::CircleTransition);
+EXPECT_NEAR(transition.position_ned[0], moving.position_ned[0], kTolerance);
+EXPECT_NEAR(transition.position_ned[1], moving.position_ned[1], kTolerance);
+
+const TrajectoryGenerator::Output resized_circle = update_at(generator, 7'000'000);
+EXPECT_EQ(resized_circle.mode, TrajectoryGenerator::Mode::Circle);
+EXPECT_NEAR(resized_circle.position_ned[0], 0.f, kTolerance);
+EXPECT_NEAR(resized_circle.position_ned[1], -2.f, kTolerance);
 }

@@ -14,6 +14,7 @@
 
 #include <uORB/Publication.hpp>
 #include <uORB/Subscription.hpp>
+#include <uORB/topics/parameter_update.h>
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/vehicle_attitude_setpoint.h>
@@ -117,6 +118,7 @@ uORB::Subscription _vehicle_angular_velocity_sub{ORB_ID(vehicle_angular_velocity
 uORB::Subscription _manual_control_setpoint_sub{ORB_ID(manual_control_setpoint)};
 uORB::Subscription _input_rc_sub{ORB_ID(input_rc)};
 uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
+uORB::Subscription _parameter_update_sub{ORB_ID(parameter_update)};
 
 uORB::Publication<vehicle_thrust_setpoint_s> _vehicle_thrust_setpoint_pub{ORB_ID(vehicle_thrust_setpoint)};
 uORB::Publication<vehicle_torque_setpoint_s> _vehicle_torque_setpoint_pub{ORB_ID(vehicle_torque_setpoint)};
@@ -165,6 +167,10 @@ float _published_thrust_body[3]{0.f, 0.f, 0.f};
 float _published_torque_body[3]{0.f, 0.f, 0.f};
 bool _control_setpoint_published{false};
 uint32_t _control_setpoint_publish_count{0};
+
+DEFINE_PARAMETERS(
+(ParamFloat<px4::params::L1_CIR_RADIUS>) _param_l1_cir_radius
+)
 
 perf_counter_t _loop_perf{perf_alloc(PC_ELAPSED, MODULE_NAME": cycle")};
 perf_counter_t _loop_interval_perf{perf_alloc(PC_INTERVAL, MODULE_NAME": interval")};

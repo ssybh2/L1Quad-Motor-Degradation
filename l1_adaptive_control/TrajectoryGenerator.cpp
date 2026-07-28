@@ -105,12 +105,9 @@ output.snap_ned[i] = 0.f;
 }
 
 } else {
-if (_commanded_mode == CommandedMode::Circle) {
-update_circle_target(input, output);
-
-} else {
-update_hover_target(input, output);
-}
+const float commanded_speed_m_s =
+	_commanded_mode == CommandedMode::Circle ? CIRCLE_SPEED_M_S : 0.f;
+update_circle_target(input, output, commanded_speed_m_s);
 }
 
 _last_update_us = input.timestamp_us;
@@ -137,17 +134,50 @@ if (_commanded_mode == mode) {
 return;
 }
 
+// Speed zero is hover. Preserve the current target position when stopping the
+// circle so the reference does not jump back to the original takeoff point.
+if (mode == CommandedMode::Hover && _last_output.valid) {
+sync_hover_reference_from_output(_last_output);
+}
+
 _commanded_mode = mode;
 reset_circle_state();
 }
 
+void TrajectoryGenerator::set_circle_radius_m(float radius_m)
+{
+if (!std::isfinite(radius_m)) {
+return;
+}
+
+const float constrained_radius_m = math::constrain(radius_m, MIN_CIRCLE_RADIUS_M, MAX_CIRCLE_RADIUS_M);
+
+if (fabsf(constrained_radius_m - _circle_radius_m) < 1e-4f) {
+return;
+}
+
+_circle_radius_m = constrained_radius_m;
+
+// If the radius changes during a circle, preserve the current setpoint and
+// smoothly transition to the new radius around the same circle center.
+if (_circle_initialized && _last_output.valid) {
+copy3(_last_output.position_ned, _circle_transition_start_position_ned);
+copy3(_circle_center_position_ned, _circle_start_position_ned);
+_circle_start_position_ned[1] -= _circle_radius_m;
+_circle_start_position_ned[2] = _circle_center_position_ned[2];
+_circle_current_speed_rad_s = CIRCLE_SPEED_M_S / _circle_radius_m;
+_circle_transition_start_time_s = _last_output.elapsed_time_s;
+_circle_orbit_start_time_s = _circle_transition_start_time_s + CIRCLE_TRANSITION_DURATION_S;
+}
+}
+
 float TrajectoryGenerator::circle_period_s() const
 {
-if (CIRCLE_SPEED_M_S < 1e-5f || CIRCLE_RADIUS_M < 1e-5f) {
+if (CIRCLE_SPEED_M_S < 1e-5f || _circle_radius_m < 1e-5f) {
 return 0.f;
 }
 
-return TWO_PI_F * CIRCLE_RADIUS_M / CIRCLE_SPEED_M_S;
+return TWO_PI_F * _circle_radius_m / CIRCLE_SPEED_M_S;
 }
 
 void TrajectoryGenerator::set_zero_derivatives(Output &output)
@@ -216,40 +246,36 @@ _hover_position_ned[2] = _manual_hold_position_ned[2];
 return target_vz_ned;
 }
 
-void TrajectoryGenerator::update_hover_target(const Input &input, Output &output)
+void TrajectoryGenerator::update_circle_target(const Input &input, Output &output, float speed_m_s)
 {
+const float radius = _circle_radius_m;
+float target_vz_ned = 0.f;
+
+// A circle with zero tangential speed is the hover trajectory. Both commands
+// intentionally use this function so their position reference is identical.
+if (radius < 1e-5f || speed_m_s < 1e-5f) {
 output.mode = Mode::Hover;
-reset_circle_state();
 
 if (input.manual_height_control_enabled) {
 update_manual_hold_target(input, output);
 
 } else {
 _manual_hold_initialized = false;
-set_hold_position(output, _takeoff_target_position_ned);
+set_hold_position(output, _hover_position_ned);
 sync_hover_reference_from_output(output);
 }
-}
 
-void TrajectoryGenerator::update_circle_target(const Input &input, Output &output)
-{
-output.mode = Mode::Circle;
-
-const float radius = CIRCLE_RADIUS_M;
-const float speed_m_s = CIRCLE_SPEED_M_S;
-float target_vz_ned = 0.f;
-
-if (radius < 1e-5f || speed_m_s < 1e-5f) {
-set_hold_position(output, _hover_position_ned);
 return;
 }
 
 if (!_circle_initialized) {
 copy3(_hover_position_ned, _circle_center_position_ned);
+copy3(_hover_position_ned, _circle_transition_start_position_ned);
+copy3(_circle_center_position_ned, _circle_start_position_ned);
+_circle_start_position_ned[1] -= radius;
 _circle_current_speed_rad_s = speed_m_s / radius;
-_circle_time_offset_s = output.elapsed_time_s;
-_circle_current_loop_time_s = TWO_PI_F / _circle_current_speed_rad_s;
-_circle_acc_complete = true;
+_circle_transition_start_time_s = output.elapsed_time_s;
+_circle_orbit_start_time_s = _circle_transition_start_time_s + CIRCLE_TRANSITION_DURATION_S;
 _circle_initialized = true;
 }
 
@@ -259,35 +285,47 @@ _circle_center_position_ned[2] = _hover_position_ned[2];
 
 } else {
 _manual_hold_initialized = false;
-_hover_position_ned[2] = _takeoff_target_position_ned[2];
 _circle_center_position_ned[2] = _hover_position_ned[2];
 }
 
-const float t = math::max(input.timestamp_us >= _start_time_us ?
-			 (input.timestamp_us - _start_time_us) * 1e-6f - _circle_time_offset_s : 0.f, 0.f);
+_circle_transition_start_position_ned[2] = _circle_center_position_ned[2];
+_circle_start_position_ned[2] = _circle_center_position_ned[2];
+
+const float transition_time_s = output.elapsed_time_s - _circle_transition_start_time_s;
+
+if (transition_time_s < CIRCLE_TRANSITION_DURATION_S) {
+update_circle_transition_target(output, transition_time_s, target_vz_ned);
+return;
+}
+
+output.mode = Mode::Circle;
+
+const float t = math::max(output.elapsed_time_s - _circle_orbit_start_time_s, 0.f);
 const float w = _circle_current_speed_rad_s;
 const float theta = w * t;
 const float s = sinf(theta);
 const float c = cosf(theta);
 
-output.position_ned[0] = _circle_center_position_ned[0] + radius * c;
-output.position_ned[1] = _circle_center_position_ned[1] + radius * s;
+// Original real-airframe circle convention:
+// x = r sin(wt), y = -r cos(wt), starting at (0, -r).
+output.position_ned[0] = _circle_center_position_ned[0] + radius * s;
+output.position_ned[1] = _circle_center_position_ned[1] - radius * c;
 output.position_ned[2] = _circle_center_position_ned[2];
 
-output.velocity_ned[0] = -radius * w * s;
-output.velocity_ned[1] = radius * w * c;
+output.velocity_ned[0] = radius * w * c;
+output.velocity_ned[1] = radius * w * s;
 output.velocity_ned[2] = target_vz_ned;
 
-output.acceleration_ned[0] = -radius * w * w * c;
-output.acceleration_ned[1] = -radius * w * w * s;
+output.acceleration_ned[0] = -radius * w * w * s;
+output.acceleration_ned[1] = radius * w * w * c;
 output.acceleration_ned[2] = 0.f;
 
-output.jerk_ned[0] = radius * w * w * w * s;
-output.jerk_ned[1] = -radius * w * w * w * c;
+output.jerk_ned[0] = -radius * w * w * w * c;
+output.jerk_ned[1] = -radius * w * w * w * s;
 output.jerk_ned[2] = 0.f;
 
-output.snap_ned[0] = radius * w * w * w * w * c;
-output.snap_ned[1] = radius * w * w * w * w * s;
+output.snap_ned[0] = radius * w * w * w * w * s;
+output.snap_ned[1] = -radius * w * w * w * w * c;
 output.snap_ned[2] = 0.f;
 
 if (_circle_yaw_mode == CircleYawMode::Fixed) {
@@ -297,13 +335,52 @@ output.yaw_accel = 0.f;
 }
 }
 
+void TrajectoryGenerator::update_circle_transition_target(Output &output, float transition_time_s,
+		float target_vz_ned)
+{
+output.mode = Mode::CircleTransition;
+
+const float duration = CIRCLE_TRANSITION_DURATION_S;
+const float s = math::constrain(transition_time_s / duration, 0.f, 1.f);
+const float s2 = s * s;
+const float s3 = s2 * s;
+const float s4 = s3 * s;
+const float s5 = s4 * s;
+const float s6 = s5 * s;
+const float s7 = s6 * s;
+
+// Seventh-order smooth step used by the original transition trajectory.
+const float h = 35.f * s4 - 84.f * s5 + 70.f * s6 - 20.f * s7;
+const float h_dot = (140.f * s3 - 420.f * s4 + 420.f * s5 - 140.f * s6) / duration;
+const float h_ddot = (420.f * s2 - 1680.f * s3 + 2100.f * s4 - 840.f * s5)
+		     / (duration * duration);
+const float h_jerk = (840.f * s - 5040.f * s2 + 8400.f * s3 - 4200.f * s4)
+		     / (duration * duration * duration);
+const float h_snap = (840.f - 10080.f * s + 25200.f * s2 - 16800.f * s3)
+		     / (duration * duration * duration * duration);
+
+for (int i = 0; i < 2; i++) {
+const float delta = _circle_start_position_ned[i] - _circle_transition_start_position_ned[i];
+output.position_ned[i] = _circle_transition_start_position_ned[i] + delta * h;
+output.velocity_ned[i] = delta * h_dot;
+output.acceleration_ned[i] = delta * h_ddot;
+output.jerk_ned[i] = delta * h_jerk;
+output.snap_ned[i] = delta * h_snap;
+}
+
+output.position_ned[2] = _circle_center_position_ned[2];
+output.velocity_ned[2] = target_vz_ned;
+output.acceleration_ned[2] = 0.f;
+output.jerk_ned[2] = 0.f;
+output.snap_ned[2] = 0.f;
+}
+
 void TrajectoryGenerator::reset_circle_state()
 {
 _circle_initialized = false;
 _circle_current_speed_rad_s = 0.f;
-_circle_time_offset_s = 0.f;
-_circle_current_loop_time_s = 0.f;
-_circle_acc_complete = false;
+_circle_transition_start_time_s = 0.f;
+_circle_orbit_start_time_s = 0.f;
 }
 
 void TrajectoryGenerator::sync_hover_reference_from_output(const Output &output)

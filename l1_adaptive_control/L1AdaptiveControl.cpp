@@ -115,6 +115,8 @@ L1AdaptiveControl::L1AdaptiveControl() :
 ModuleParams(nullptr),
 ScheduledWorkItem(MODULE_NAME, px4::wq_configurations::nav_and_controllers)
 {
+updateParams();
+_trajectory_generator.set_circle_radius_m(_param_l1_cir_radius.get());
 }
 
 L1AdaptiveControl::~L1AdaptiveControl()
@@ -144,6 +146,13 @@ return;
 
 perf_begin(_loop_perf);
 perf_count(_loop_interval_perf);
+
+if (_parameter_update_sub.updated()) {
+parameter_update_s parameter_update{};
+_parameter_update_sub.copy(&parameter_update);
+updateParams();
+_trajectory_generator.set_circle_radius_m(_param_l1_cir_radius.get());
+}
 
 update_subscriptions();
 update_internal_state();
@@ -728,8 +737,9 @@ PX4_INFO("  trajectory: mode=%u valid=%d target_z=%.3f target_vz=%.3f elapsed=%.
  (double)_trajectory_output.velocity_ned[2],
  (double)_trajectory_output.elapsed_time_s);
 
-PX4_INFO("  trajectory command: %s",
- trajectory_mode() == TrajectoryGenerator::CommandedMode::Circle ? "circle" : "hover");
+PX4_INFO("  trajectory command: %s radius=%.2fm",
+ trajectory_mode() == TrajectoryGenerator::CommandedMode::Circle ? "circle" : "hover",
+ (double)_trajectory_generator.circle_radius_m());
 
 PX4_INFO("  rc height: enabled=%d received=%d valid=%d throttle=%.3f",
  (int)_rc_height_control_enabled.load(),
@@ -828,6 +838,7 @@ return -1;
 if (argc < 2 || !strcmp(argv[1], "status")) {
 PX4_INFO("Trajectory command: %s",
  instance->trajectory_mode() == TrajectoryGenerator::CommandedMode::Circle ? "circle" : "hover");
+PX4_INFO("  radius: %.2fm", (double)instance->_trajectory_generator.circle_radius_m());
 PX4_INFO("  output: mode=%u valid=%d pos=[%.3f %.3f %.3f] vel=[%.3f %.3f %.3f] yaw=%.3f",
  (unsigned)instance->_trajectory_output.mode,
  (int)instance->_trajectory_output.valid,
