@@ -340,6 +340,61 @@ param save
 每次只改一类参数，保存修改前记录原值；如果需要恢复本版本默认值，可在
 QGC 参数页对单个参数执行 Reset to Default。
 
+修改当前参数值和固件默认值：
+
+1. 只修改当前飞控保存的参数
+
+例如把圆轨迹速度改为 0.8 m/s：
+
+param set L1_CIR_SPEED 0.8
+param show L1_CIR_SPEED
+param save
+
+这种方法立即修改当前飞控使用的数值，重启后仍然保留，不需要修改源码、
+重新编译或刷写固件，但不会改变固件内置默认值。
+
+2. 修改固件内置默认值
+
+在仓库参数定义文件中修改对应的 PARAM_DEFINE_FLOAT 或
+PARAM_DEFINE_INT32。例如：
+
+PARAM_DEFINE_FLOAT(L1_CIR_SPEED, 0.5f);
+
+改为：
+
+PARAM_DEFINE_FLOAT(L1_CIR_SPEED, 0.8f);
+
+不要为修改默认值而改控制器公式。修改完成后，把仓库模块同步到实际编译
+使用的 PX4 源码：
+
+cp -a ./Ardupoilt-to-PX4/l1_adaptive_control/. \
+  ./PX4-Autopilot-v1.17.0-MAIN/src/modules/l1_adaptive_control/
+
+重新编译：
+
+make -C ./PX4-Autopilot-v1.17.0-MAIN px4_fmu-v6c_default
+
+编译后的固件：
+
+./PX4-Autopilot-v1.17.0-MAIN/build/px4_fmu-v6c_default/px4_fmu-v6c_default.px4
+
+拆除全部螺旋桨、锁定飞控并关闭占用飞控 USB 的程序后刷写：
+
+make -C ./PX4-Autopilot-v1.17.0-MAIN px4_fmu-v6c_default upload
+
+3. 让已经保存过的参数采用新固件默认值
+
+PX4 会保留飞控中已经保存的参数。仅刷入新固件时，旧保存值可能继续覆盖
+刚修改的固件默认值。例如刷写后让圆速度采用新的默认值：
+
+param reset L1_CIR_SPEED
+param show L1_CIR_SPEED
+param save
+
+只重置需要更新的单个参数。也可以在 QGC 参数页对该参数执行
+Reset to Default。不要为了一个 L1 参数执行全部参数重置，否则机型、
+传感器、遥控器、飞行模式和通信设置也可能被清除。
+
 
 ==================== 第二部分：排错与安全说明 ====================
 
