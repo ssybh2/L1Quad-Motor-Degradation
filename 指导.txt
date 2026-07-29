@@ -154,7 +154,6 @@ python3 ./Ardupoilt-to-PX4/scripts/mavlink_serial_udp_bridge.py \
 
 保持两个终端运行，最后打开 QGC。QGC 使用 UDP 14550，jMAVSim 使用
 UDP 14560，独立命令行 NSH 使用 UDP 14540，返回数据统一进入 14570。
-
 QGC MAVLink Console 无回显时，可用终端 3 独立检查：
 
 python3 ./PX4-Autopilot-v1.17.0-MAIN/Tools/mavlink_shell.py \
@@ -395,11 +394,172 @@ param save
 Reset to Default。不要为了一个 L1 参数执行全部参数重置，否则机型、
 传感器、遥控器、飞行模式和通信设置也可能被清除。
 
+十、真机 L1 调参流程
+
+真机调参顺序：
+
+基础飞行 -> 几何控制器 -> L1 自适应 -> 电机降级 -> 圆轨迹
+
+每次只修改一个轴或一组相互对应的参数，初始修改幅度控制在 5% 到 10%。
+修改控制、机体和电机参数时必须锁定飞控。首次测试必须拆桨检查电机编号、
+方向和拨杆安全位置，并设置可立即切回普通 Position 的遥控器拨杆。
+
+1. 真机固定物理参数
+
+当前实测质量、对角惯量和有效机臂：
+
+param set L1_MASS 1.0006
+param set L1_JXX 0.00517
+param set L1_JYY 0.00484
+param set L1_JZZ 0.0075
+param set L1_ARM_ROLL 0.12
+param set L1_ARM_PITCH 0.12
+param save
+
+这些是物理测量值，不应当作稳定性调节旋钮。真机不需要修改 SIH_*。
+L1_MOT_K1、L1_MOT_K2 和 L1_YAW_MMAX 只有在推力台或力矩台测量后才
+能准确修改。L1_MOT_CMDMAX 保持 100。
+
+2. 建立几何控制器基线
+
+第一次测试关闭自适应和电机降级：
+
+param set L1_ADAPT_EN 0
+param set L1_MOT1_SCALE 1.0
+param save
+
+先在普通 Position 模式起飞并稳定悬停。普通模式不稳定时，应先检查
+传感器、振动、电机方向、执行器配置和 PX4 基础控制器，不要修改 L1
+增益掩盖基础问题。
+
+普通模式稳定后切入 L1 Failure。此时只验证几何控制器。
+
+3. 根据现象调整几何控制器
+
+水平位置响应太慢：
+对应轴 L1_KPX 或 L1_KPY 增加 5% 到 10%。
+
+水平位置缓慢来回摆动或超调：
+对应轴 L1_KVX 或 L1_KVY 增加 5% 到 10%；仍然摆动时再小幅降低
+对应的 KP。
+
+高度响应太慢：
+小幅增加 L1_KPZ。
+
+高度上下反复振荡：
+增加 L1_KVZ；仍然振荡时再降低 L1_KPZ。
+
+长期掉高但没有振荡：
+先检查 L1_MASS、电池电压、电机推力曲线和输出饱和，不要先增加 KPZ。
+
+横滚或俯仰响应太慢：
+分别增加 L1_KRX 或 L1_KRY。
+
+横滚或俯仰低频来回摆动：
+分别增加 L1_KOX 或 L1_KOY；仍然摆动时再降低对应的 KR。
+
+高频抖动、电机尖叫或发热：
+降低对应轴的 KO，并检查机架振动、螺旋桨平衡和陀螺仪滤波。不要用滤波
+掩盖机械振动。
+
+yaw 缓慢漂移：
+先检查电机方向、螺旋桨、Control Allocation 和偏航力矩模型，再考虑
+增加 L1_KRZ。
+
+yaw 超调或左右摆动：
+增加 L1_KOZ，或者小幅降低 L1_KRZ。
+
+切换模式瞬间翻转：
+立即切回 Position。检查电机编号、旋转方向、力矩符号和分配矩阵。这不
+是简单增益问题。
+
+切换后立刻大幅掉高：
+检查推力模型、质量和电机余量。输出已经饱和时，提高增益不能增加物理
+推力。
+
+4. 新质量和惯量的理论候选增益
+
+为了大致保持旧模型的闭环动态，可在 SIH 中测试以下候选值：
+
+L1_KPX、L1_KPY、L1_KPZ = 22.59、24.21、24.21
+L1_KVX、L1_KVY、L1_KVZ = 2.42、1.45、1.78
+L1_KRX、L1_KRY、L1_KRZ = 1.41、0.93、0.35
+L1_KOX、L1_KOY、L1_KOZ = 0.090、0.079、0.0093
+
+这些值是按照质量和三轴惯量比例缩放得到的候选值，不应未经 SIH 验证就
+一次性写入真机。应逐轴修改并记录结果。
+
+5. 几何控制稳定后再开启 L1 自适应
+
+param set L1_ADAPT_EN 1
+param set L1_MOT1_SCALE 1.0
+param save
+
+开启自适应后立即振荡：
+降低 L1_A_RP_MAX、L1_A_THR_FRAC，或降低 L1_Q1_MOM、L1_Q1_THR。
+
+补偿太慢且执行器输出没有饱和：
+Q1_THR 或 Q1_MOM 增加约 5%。
+
+出现高频细小抽动：
+降低 Q1_THR、Q1_MOM 和相应自适应输出上限。
+
+自适应输出长期达到上限：
+先检查物理模型和执行器余量，不要继续增大上限。
+
+yaw 在开启自适应后摆动：
+先降低 L1_A_YAW_MAX。
+
+首次真机调参不要修改 L1_AS_V、L1_AS_OMEGA 和 L1_Q2_MOM。这些参数
+同时影响预测器和滤波动态，不能仅凭肉眼现象调整。
+
+6. 最后逐步测试电机降级
+
+L1_MOT1_SCALE 按以下顺序逐级降低：
+
+1.00 -> 0.95 -> 0.90 -> 0.85 -> 0.80
+
+每一级先测试悬停，不要直接进入圆轨迹。
+
+降级后掉高且正常电机输出接近饱和：
+总推力不足，应提高 L1_MOT1_SCALE。
+
+降级后 yaw 无法保持：
+提高 L1_MOT1_SCALE，并检查实际偏航力矩。
+
+降级后缓慢位置漂移但姿态稳定：
+再调整对应位置轴的 KP 和 KV。
+
+降级后迅速翻转：
+立即切回 Position。检查分配、方向和执行器余量，不要继续降低比例。
+
+7. 保存和恢复真机调参基线
+
+保存：
+
+param save /fs/microsd/l1_real_baseline.params
+
+恢复：
+
+param load /fs/microsd/l1_real_baseline.params
+param save
+reboot
+
+也可以在 QGC 参数页使用 Save to file 和 Load from file。每次试飞锁定后
+结束当前日志，使不同参数试验分别保存为独立日志。
+
+参考：
+
+https://docs.px4.io/main/en/config_mc/index
+https://docs.px4.io/v1.17/en/config/autotune_mc
+https://docs.px4.io/main/en/config_mc/filter_tuning
+https://docs.px4.io/main/en/advanced_config/parameters
+
 
 ==================== 第二部分：排错与安全说明 ====================
 
 
-十、常见问题
+十一、常见问题
 
 QGC 识别不到 Joystick：
 
@@ -433,7 +593,7 @@ SITL 传感器、EKF 和起飞功能正常时，这些通常是仿真环境提�
 Position 并检查电机编号、方向、输出比例和 yaw 控制输出。
 
 
-十一、安全边界
+十二、安全边界
 
 - SITL 中可以使用 commander arm -f；真机禁止强制解锁。
 - SITL 专用故障保护设置不得直接复制到真机。
