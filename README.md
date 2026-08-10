@@ -46,6 +46,30 @@ PX4 state estimates
 This repository contains the port and its integration files, not a complete
 copy of PX4.
 
+## Build the Main Firmware
+
+Clone the real-hardware branch and initialize its pinned PX4 source tree:
+
+```sh
+git clone --branch main --recurse-submodules \
+  https://github.com/Edwin-Shao/L1Quad-Motor-Degradation.git
+cd L1Quad-Motor-Degradation
+```
+
+Install the controller and PX4 integration changes, then build the Pixhawk 6C
+Mini firmware:
+
+```sh
+./scripts/install_main.sh ./PX4-Autopilot
+make -C ./PX4-Autopilot px4_fmu-v6c_default
+```
+
+The custom firmware is generated at:
+
+```text
+./PX4-Autopilot/build/px4_fmu-v6c_default/px4_fmu-v6c_default.px4
+```
+
 ## References
 
 - [Original L1Quad repository](https://github.com/sigma-pi/L1Quad)
