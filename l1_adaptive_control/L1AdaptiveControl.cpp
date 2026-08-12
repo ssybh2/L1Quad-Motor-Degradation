@@ -412,7 +412,7 @@ void L1AdaptiveControl::reset_l1_adaptive_state()
 	_l1_state = L1AdaptiveState{};
 
 	for (int i = 0; i < 4; i++) {
-		_l1_output_thrust_moment[i] = 0.f;
+		_L1thrustMomentCmd[i] = 0.f;
 	}
 }
 
@@ -421,8 +421,8 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 	_l1_update_executed = false;
 
 	for (int i = 0; i < 4; i++) {
-		_l1_output_thrust_moment[i] = 0.f;
-		_combined_thrust_moment[i] = 0.f;
+		_L1thrustMomentCmd[i] = 0.f;
+		_totalThrustMomentCmd[i] = 0.f;
 	}
 
 	if (!_failure_mode_selected || !_geometric_output.valid || !_state_valid_for_control || !_state.armed
@@ -452,7 +452,7 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 	float R[3][3]{};
 	quat_to_rotation_matrix_body_to_ned(_state.quat_body_to_ned, R);
 
-	const float baseline_thrust_moment[4] = {
+	const float thrustMomentCmd[4] = {
 		_geometric_output.thrust_newton,
 		_geometric_output.moment_newton_meter[0],
 		_geometric_output.moment_newton_meter[1],
@@ -460,19 +460,19 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 	};
 
 	if (!_l1_state.initialized) {
-		copy3(_state.velocity_ned, _l1_state.velocity_hat_prev);
-		copy3(_state.velocity_ned, _l1_state.velocity_prev);
-		copy3(_state.angular_velocity_body, _l1_state.angular_velocity_hat_prev);
-		copy3(_state.angular_velocity_body, _l1_state.angular_velocity_prev);
+		copy3(_state.velocity_ned, _l1_state.v_hat_prev);
+		copy3(_state.velocity_ned, _l1_state.v_prev);
+		copy3(_state.angular_velocity_body, _l1_state.omega_hat_prev);
+		copy3(_state.angular_velocity_body, _l1_state.omega_prev);
 
 		for (int row = 0; row < 3; row++) {
 			for (int col = 0; col < 3; col++) {
-				_l1_state.rotation_body_to_ned_prev[row][col] = R[row][col];
+				_l1_state.R_prev[row][col] = R[row][col];
 			}
 		}
 
 		for (int i = 0; i < 4; i++) {
-			_l1_state.baseline_thrust_moment_prev[i] = baseline_thrust_moment[i];
+			_l1_state.u_b_prev[i] = thrustMomentCmd[i];
 		}
 
 		_l1_state.last_update_us = _state.timestamp_us;
@@ -484,40 +484,40 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 	float colx_prev[3]{};
 	float coly_prev[3]{};
 	float colz_prev[3]{};
-	get_matrix_column(_l1_state.rotation_body_to_ned_prev, 0, colx_prev);
-	get_matrix_column(_l1_state.rotation_body_to_ned_prev, 1, coly_prev);
-	get_matrix_column(_l1_state.rotation_body_to_ned_prev, 2, colz_prev);
+	get_matrix_column(_l1_state.R_prev, 0, colx_prev);
+	get_matrix_column(_l1_state.R_prev, 1, coly_prev);
+	get_matrix_column(_l1_state.R_prev, 2, colz_prev);
 
-	float velocity_prediction_error_prev[3]{};
-	float angular_prediction_error_prev[3]{};
+	float vpred_error_prev[3]{};
+	float omegapred_error_prev[3]{};
 
 	for (int i = 0; i < 3; i++) {
-		velocity_prediction_error_prev[i] = _l1_state.velocity_hat_prev[i] - _l1_state.velocity_prev[i];
-		angular_prediction_error_prev[i] = _l1_state.angular_velocity_hat_prev[i] - _l1_state.angular_velocity_prev[i];
+		vpred_error_prev[i] = _l1_state.v_hat_prev[i] - _l1_state.v_prev[i];
+		omegapred_error_prev[i] = _l1_state.omega_hat_prev[i] - _l1_state.omega_prev[i];
 	}
 
 	const float previous_total_thrust =
-		_l1_state.baseline_thrust_moment_prev[0]
-		+ _l1_state.adaptive_thrust_moment_prev[0]
-		+ _l1_state.sigma_matched_prev[0];
+		_l1_state.u_b_prev[0]
+		+ _l1_state.u_ad_prev[0]
+		+ _l1_state.sigma_m_hat_prev[0];
 
-	float velocity_hat[3]{};
+	float v_hat[3]{};
 
 	for (int i = 0; i < 3; i++) {
 		const float gravity_term = (i == 2) ? GRAVITY_MSS : 0.f;
 
-		velocity_hat[i] = _l1_state.velocity_hat_prev[i]
+		v_hat[i] = _l1_state.v_hat_prev[i]
 				  + (gravity_term
 				     - colz_prev[i] * previous_total_thrust / mass_kg
-				     + colx_prev[i] * _l1_state.sigma_unmatched_prev[0] / mass_kg
-				     + coly_prev[i] * _l1_state.sigma_unmatched_prev[1] / mass_kg
-				     + velocity_prediction_error_prev[i] * as_v) * dt;
+				     + colx_prev[i] * _l1_state.sigma_um_hat_prev[0] / mass_kg
+				     + coly_prev[i] * _l1_state.sigma_um_hat_prev[1] / mass_kg
+				     + vpred_error_prev[i] * as_v) * dt;
 	}
 
 	const float omega_prev[3] = {
-		_l1_state.angular_velocity_prev[0],
-		_l1_state.angular_velocity_prev[1],
-		_l1_state.angular_velocity_prev[2]
+		_l1_state.omega_prev[0],
+		_l1_state.omega_prev[1],
+		_l1_state.omega_prev[2]
 	};
 
 	const float j_omega_prev[3] = {
@@ -529,31 +529,31 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 	float gyro_moment_prev[3]{};
 	cross3(omega_prev, j_omega_prev, gyro_moment_prev);
 
-	const float previous_total_moment[3] = {
-		_l1_state.baseline_thrust_moment_prev[1] + _l1_state.adaptive_thrust_moment_prev[1] + _l1_state.sigma_matched_prev[1],
-		_l1_state.baseline_thrust_moment_prev[2] + _l1_state.adaptive_thrust_moment_prev[2] + _l1_state.sigma_matched_prev[2],
-		_l1_state.baseline_thrust_moment_prev[3] + _l1_state.adaptive_thrust_moment_prev[3] + _l1_state.sigma_matched_prev[3]
+	const float tempVec[3] = {
+		_l1_state.u_b_prev[1] + _l1_state.u_ad_prev[1] + _l1_state.sigma_m_hat_prev[1],
+		_l1_state.u_b_prev[2] + _l1_state.u_ad_prev[2] + _l1_state.sigma_m_hat_prev[2],
+		_l1_state.u_b_prev[3] + _l1_state.u_ad_prev[3] + _l1_state.sigma_m_hat_prev[3]
 	};
 
-	float angular_velocity_hat[3]{};
+	float omega_hat[3]{};
 
 	for (int i = 0; i < 3; i++) {
-		angular_velocity_hat[i] = _l1_state.angular_velocity_hat_prev[i]
+		omega_hat[i] = _l1_state.omega_hat_prev[i]
 					  + (-inertia_inverse[i] * gyro_moment_prev[i]
-					     + inertia_inverse[i] * previous_total_moment[i]
-					     + angular_prediction_error_prev[i] * as_omega) * dt;
+					     + inertia_inverse[i] * tempVec[i]
+					     + omegapred_error_prev[i] * as_omega) * dt;
 	}
 
-	float velocity_prediction_error[3]{};
-	float angular_prediction_error[3]{};
-	float phi_inv_mu_v[3]{};
-	float phi_inv_mu_omega[3]{};
+	float vpred_error[3]{};
+	float omegapred_error[3]{};
+	float PhiInvmu_v[3]{};
+	float PhiInvmu_omega[3]{};
 
 	for (int i = 0; i < 3; i++) {
-		velocity_prediction_error[i] = velocity_hat[i] - _state.velocity_ned[i];
-		angular_prediction_error[i] = angular_velocity_hat[i] - _state.angular_velocity_body[i];
-		phi_inv_mu_v[i] = phi_inverse_mu(velocity_prediction_error[i], as_v, dt);
-		phi_inv_mu_omega[i] = phi_inverse_mu(angular_prediction_error[i], as_omega, dt);
+		vpred_error[i] = v_hat[i] - _state.velocity_ned[i];
+		omegapred_error[i] = omega_hat[i] - _state.angular_velocity_body[i];
+		PhiInvmu_v[i] = phi_inverse_mu(vpred_error[i], as_v, dt);
+		PhiInvmu_omega[i] = phi_inverse_mu(omegapred_error[i], as_omega, dt);
 	}
 
 	float colx[3]{};
@@ -563,61 +563,61 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 	get_matrix_column(R, 1, coly);
 	get_matrix_column(R, 2, colz);
 
-	float sigma_matched[4]{};
-	float sigma_unmatched[2]{};
+	float sigma_m_hat[4]{};
+	float sigma_um_hat[2]{};
 
-	sigma_matched[0] = dot3(colz, phi_inv_mu_v) * mass_kg;
-	sigma_matched[1] = -inertia_kg_m2[0] * phi_inv_mu_omega[0];
-	sigma_matched[2] = -inertia_kg_m2[1] * phi_inv_mu_omega[1];
-	sigma_matched[3] = -inertia_kg_m2[2] * phi_inv_mu_omega[2];
+	sigma_m_hat[0] = dot3(colz, PhiInvmu_v) * mass_kg;
+	sigma_m_hat[1] = -inertia_kg_m2[0] * PhiInvmu_omega[0];
+	sigma_m_hat[2] = -inertia_kg_m2[1] * PhiInvmu_omega[1];
+	sigma_m_hat[3] = -inertia_kg_m2[2] * PhiInvmu_omega[2];
 
-	sigma_unmatched[0] = -dot3(colx, phi_inv_mu_v) * mass_kg;
-	sigma_unmatched[1] = -dot3(coly, phi_inv_mu_v) * mass_kg;
+	sigma_um_hat[0] = -dot3(colx, PhiInvmu_v) * mass_kg;
+	sigma_um_hat[1] = -dot3(coly, PhiInvmu_v) * mass_kg;
 
 	const float lpf1_thrust_keep = expf(-_param_l1_q1_thr.get() * dt);
 	const float lpf1_moment_keep = expf(-_param_l1_q1_mom.get() * dt);
 	const float lpf2_moment_keep = expf(-_param_l1_q2_mom.get() * dt);
 
-	float lpf1[4]{};
-	float lpf2[4]{};
+	float u_ad_int[4]{};
+	float u_ad[4]{};
 
-	lpf1[0] = lpf1_thrust_keep * _l1_state.lpf1_prev[0] + (1.f - lpf1_thrust_keep) * sigma_matched[0];
+	u_ad_int[0] = lpf1_thrust_keep * _l1_state.lpf1_prev[0] + (1.f - lpf1_thrust_keep) * sigma_m_hat[0];
 
 	for (int i = 1; i < 4; i++) {
-		lpf1[i] = lpf1_moment_keep * _l1_state.lpf1_prev[i] + (1.f - lpf1_moment_keep) * sigma_matched[i];
-		lpf2[i] = lpf2_moment_keep * _l1_state.lpf2_prev[i] + (1.f - lpf2_moment_keep) * lpf1[i];
+		u_ad_int[i] = lpf1_moment_keep * _l1_state.lpf1_prev[i] + (1.f - lpf1_moment_keep) * sigma_m_hat[i];
+		u_ad[i] = lpf2_moment_keep * _l1_state.lpf2_prev[i] + (1.f - lpf2_moment_keep) * u_ad_int[i];
 	}
 
-	lpf2[0] = lpf1[0];
+	u_ad[0] = u_ad_int[0];
 
-	_l1_output_thrust_moment[0] = l1_enabled ? math::constrain(-lpf2[0], -max_l1_thrust_n, max_l1_thrust_n) : 0.f;
-	_l1_output_thrust_moment[1] = l1_enabled ? math::constrain(-lpf2[1], -max_l1_roll_pitch_moment_nm, max_l1_roll_pitch_moment_nm) : 0.f;
-	_l1_output_thrust_moment[2] = l1_enabled ? math::constrain(-lpf2[2], -max_l1_roll_pitch_moment_nm, max_l1_roll_pitch_moment_nm) : 0.f;
-	_l1_output_thrust_moment[3] = l1_enabled ? math::constrain(-lpf2[3], -max_l1_yaw_moment_nm, max_l1_yaw_moment_nm) : 0.f;
+	_L1thrustMomentCmd[0] = l1_enabled ? math::constrain(-u_ad[0], -max_l1_thrust_n, max_l1_thrust_n) : 0.f;
+	_L1thrustMomentCmd[1] = l1_enabled ? math::constrain(-u_ad[1], -max_l1_roll_pitch_moment_nm, max_l1_roll_pitch_moment_nm) : 0.f;
+	_L1thrustMomentCmd[2] = l1_enabled ? math::constrain(-u_ad[2], -max_l1_roll_pitch_moment_nm, max_l1_roll_pitch_moment_nm) : 0.f;
+	_L1thrustMomentCmd[3] = l1_enabled ? math::constrain(-u_ad[3], -max_l1_yaw_moment_nm, max_l1_yaw_moment_nm) : 0.f;
 
 	for (int i = 0; i < 4; i++) {
-		_l1_state.baseline_thrust_moment_prev[i] = baseline_thrust_moment[i];
-		_l1_state.adaptive_thrust_moment_prev[i] = _l1_output_thrust_moment[i];
-		_l1_state.sigma_matched_prev[i] = sigma_matched[i];
-		_l1_state.lpf1_prev[i] = lpf1[i];
-		_l1_state.lpf2_prev[i] = lpf2[i];
-		_combined_thrust_moment[i] = baseline_thrust_moment[i] + _l1_output_thrust_moment[i];
+		_l1_state.u_b_prev[i] = thrustMomentCmd[i];
+		_l1_state.u_ad_prev[i] = _L1thrustMomentCmd[i];
+		_l1_state.sigma_m_hat_prev[i] = sigma_m_hat[i];
+		_l1_state.lpf1_prev[i] = u_ad_int[i];
+		_l1_state.lpf2_prev[i] = u_ad[i];
+		_totalThrustMomentCmd[i] = thrustMomentCmd[i] + _L1thrustMomentCmd[i];
 	}
 
-	sigma_unmatched[0] = math::constrain(sigma_unmatched[0], -max_l1_thrust_n, max_l1_thrust_n);
-	sigma_unmatched[1] = math::constrain(sigma_unmatched[1], -max_l1_thrust_n, max_l1_thrust_n);
+	sigma_um_hat[0] = math::constrain(sigma_um_hat[0], -max_l1_thrust_n, max_l1_thrust_n);
+	sigma_um_hat[1] = math::constrain(sigma_um_hat[1], -max_l1_thrust_n, max_l1_thrust_n);
 
-	_l1_state.sigma_unmatched_prev[0] = sigma_unmatched[0];
-	_l1_state.sigma_unmatched_prev[1] = sigma_unmatched[1];
+	_l1_state.sigma_um_hat_prev[0] = sigma_um_hat[0];
+	_l1_state.sigma_um_hat_prev[1] = sigma_um_hat[1];
 
-	copy3(velocity_hat, _l1_state.velocity_hat_prev);
-	copy3(_state.velocity_ned, _l1_state.velocity_prev);
-	copy3(angular_velocity_hat, _l1_state.angular_velocity_hat_prev);
-	copy3(_state.angular_velocity_body, _l1_state.angular_velocity_prev);
+	copy3(v_hat, _l1_state.v_hat_prev);
+	copy3(_state.velocity_ned, _l1_state.v_prev);
+	copy3(omega_hat, _l1_state.omega_hat_prev);
+	copy3(_state.angular_velocity_body, _l1_state.omega_prev);
 
 	for (int row = 0; row < 3; row++) {
 		for (int col = 0; col < 3; col++) {
-			_l1_state.rotation_body_to_ned_prev[row][col] = R[row][col];
+			_l1_state.R_prev[row][col] = R[row][col];
 		}
 	}
 
@@ -648,7 +648,7 @@ void L1AdaptiveControl::publish_control_setpoints()
 	const float max_pitch_moment_nm =
 		math::max(_param_l1_arm_pitch.get() * max_motor_thrust_n, 1e-3f);
 	const float max_yaw_moment_nm = math::max(_param_l1_yaw_mmax.get(), 1e-3f);
-	const float thrust_n = math::constrain(_combined_thrust_moment[0], 0.f, max_thrust_n);
+	const float thrust_n = math::constrain(_totalThrustMomentCmd[0], 0.f, max_thrust_n);
 
 	vehicle_thrust_setpoint_s thrust_sp{};
 	thrust_sp.timestamp = hrt_absolute_time();
@@ -660,9 +660,9 @@ void L1AdaptiveControl::publish_control_setpoints()
 	vehicle_torque_setpoint_s torque_sp{};
 	torque_sp.timestamp = thrust_sp.timestamp;
 	torque_sp.timestamp_sample = thrust_sp.timestamp_sample;
-	torque_sp.xyz[0] = math::constrain(_combined_thrust_moment[1] / max_roll_moment_nm, -1.f, 1.f);
-	torque_sp.xyz[1] = math::constrain(_combined_thrust_moment[2] / max_pitch_moment_nm, -1.f, 1.f);
-	torque_sp.xyz[2] = math::constrain(_combined_thrust_moment[3] / max_yaw_moment_nm, -1.f, 1.f);
+	torque_sp.xyz[0] = math::constrain(_totalThrustMomentCmd[1] / max_roll_moment_nm, -1.f, 1.f);
+	torque_sp.xyz[1] = math::constrain(_totalThrustMomentCmd[2] / max_pitch_moment_nm, -1.f, 1.f);
+	torque_sp.xyz[2] = math::constrain(_totalThrustMomentCmd[3] / max_yaw_moment_nm, -1.f, 1.f);
 
 	_vehicle_thrust_setpoint_pub.publish(thrust_sp);
 	_vehicle_torque_setpoint_pub.publish(torque_sp);
@@ -715,10 +715,10 @@ PX4_INFO("   controller: traj=%d geo=%d l1=%d publish=%d count=%u",
  (unsigned)_control_setpoint_publish_count);
 
 PX4_INFO("   output: F=%.2fN M=[%.2f %.2f %.2f] thrust_z=%.3f torque=[%.3f %.3f %.3f]",
- (double)_combined_thrust_moment[0],
- (double)_combined_thrust_moment[1],
- (double)_combined_thrust_moment[2],
- (double)_combined_thrust_moment[3],
+ (double)_totalThrustMomentCmd[0],
+ (double)_totalThrustMomentCmd[1],
+ (double)_totalThrustMomentCmd[2],
+ (double)_totalThrustMomentCmd[3],
  (double)_published_thrust_body[2],
  (double)_published_torque_body[0],
  (double)_published_torque_body[1],

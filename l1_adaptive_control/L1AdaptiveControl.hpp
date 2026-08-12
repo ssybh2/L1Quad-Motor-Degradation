@@ -77,16 +77,16 @@ struct L1AdaptiveState {
 bool initialized{false};
 hrt_abstime last_update_us{0};
 
-float velocity_hat_prev[3]{0.f, 0.f, 0.f};
-float angular_velocity_hat_prev[3]{0.f, 0.f, 0.f};
-float velocity_prev[3]{0.f, 0.f, 0.f};
-float angular_velocity_prev[3]{0.f, 0.f, 0.f};
-float rotation_body_to_ned_prev[3][3]{{1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 0.f, 1.f}};
+float v_hat_prev[3]{0.f, 0.f, 0.f};
+float omega_hat_prev[3]{0.f, 0.f, 0.f};
+float v_prev[3]{0.f, 0.f, 0.f};
+float omega_prev[3]{0.f, 0.f, 0.f};
+float R_prev[3][3]{{1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 0.f, 1.f}};
 
-float baseline_thrust_moment_prev[4]{0.f, 0.f, 0.f, 0.f};
-float adaptive_thrust_moment_prev[4]{0.f, 0.f, 0.f, 0.f};
-float sigma_matched_prev[4]{0.f, 0.f, 0.f, 0.f};
-float sigma_unmatched_prev[2]{0.f, 0.f};
+float u_b_prev[4]{0.f, 0.f, 0.f, 0.f};
+float u_ad_prev[4]{0.f, 0.f, 0.f, 0.f};
+float sigma_m_hat_prev[4]{0.f, 0.f, 0.f, 0.f};
+float sigma_um_hat_prev[2]{0.f, 0.f};
 float lpf1_prev[4]{0.f, 0.f, 0.f, 0.f};
 float lpf2_prev[4]{0.f, 0.f, 0.f, 0.f};
 };
@@ -160,8 +160,8 @@ GeometricController::Output _geometric_output{};
 bool _geometric_update_executed{false};
 
 L1AdaptiveState _l1_state{};
-float _l1_output_thrust_moment[4]{0.f, 0.f, 0.f, 0.f};
-float _combined_thrust_moment[4]{0.f, 0.f, 0.f, 0.f};
+float _L1thrustMomentCmd[4]{0.f, 0.f, 0.f, 0.f};
+float _totalThrustMomentCmd[4]{0.f, 0.f, 0.f, 0.f};
 bool _l1_update_executed{false};
 
 float _published_thrust_body[3]{0.f, 0.f, 0.f};
