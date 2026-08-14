@@ -47,61 +47,61 @@ uint8_t nav_state{0};
 struct Output {
 hrt_abstime timestamp_us{0};
 
-float position_error_ned[3]{0.f, 0.f, 0.f};
-float velocity_error_ned[3]{0.f, 0.f, 0.f};
+float r_error[3]{0.f, 0.f, 0.f};
+float v_error[3]{0.f, 0.f, 0.f};
 
-float acceleration_error_ned[3]{0.f, 0.f, 0.f};
-float jerk_error_ned[3]{0.f, 0.f, 0.f};
+float a_error[3]{0.f, 0.f, 0.f};
+float j_error[3]{0.f, 0.f, 0.f};
 
-float target_force_ned[3]{0.f, 0.f, 0.f};
-float target_force_dot_ned[3]{0.f, 0.f, 0.f};
-float target_force_ddot_ned[3]{0.f, 0.f, 0.f};
+float target_force[3]{0.f, 0.f, 0.f};
+float target_force_dot[3]{0.f, 0.f, 0.f};
+float target_force_ddot[3]{0.f, 0.f, 0.f};
 
-float body_z_axis_ned[3]{0.f, 0.f, 1.f};
-float body_z_axis_dot_ned[3]{0.f, 0.f, 0.f};
-float target_thrust_dot_newton_s{0.f};
+float z_axis[3]{0.f, 0.f, 1.f};
+float b3_dot[3]{0.f, 0.f, 0.f};
+float target_thrust_dot{0.f};
 
-float desired_body_x_axis_ned[3]{1.f, 0.f, 0.f};
-float desired_body_y_axis_ned[3]{0.f, 1.f, 0.f};
-float desired_body_z_axis_ned[3]{0.f, 0.f, 1.f};
-float desired_body_x_axis_dot_ned[3]{0.f, 0.f, 0.f};
-float desired_body_y_axis_dot_ned[3]{0.f, 0.f, 0.f};
-float desired_body_z_axis_dot_ned[3]{0.f, 0.f, 0.f};
-float desired_body_x_axis_ddot_ned[3]{0.f, 0.f, 0.f};
-float desired_body_y_axis_ddot_ned[3]{0.f, 0.f, 0.f};
-float desired_body_z_axis_ddot_ned[3]{0.f, 0.f, 0.f};
+float x_axis_desired[3]{1.f, 0.f, 0.f};
+float y_axis_desired[3]{0.f, 1.f, 0.f};
+float z_axis_desired[3]{0.f, 0.f, 1.f};
+float x_axis_desired_dot[3]{0.f, 0.f, 0.f};
+float y_axis_desired_dot[3]{0.f, 0.f, 0.f};
+float z_axis_desired_dot[3]{0.f, 0.f, 0.f};
+float x_axis_desired_ddot[3]{0.f, 0.f, 0.f};
+float y_axis_desired_ddot[3]{0.f, 0.f, 0.f};
+float z_axis_desired_ddot[3]{0.f, 0.f, 0.f};
 
-float desired_rotation_matrix[3][3]{{1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 0.f, 1.f}};
-float desired_rotation_matrix_dot[3][3]{{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}};
-float desired_rotation_matrix_ddot[3][3]{{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}};
+float Rdes[3][3]{{1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 0.f, 1.f}};
+float Rd_dot[3][3]{{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}};
+float Rd_ddot[3][3]{{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}};
 
 // Stage: unit_vec(-target_force, -target_force_dot, -target_force_ddot)
-float b3c_ned[3]{0.f, 0.f, 1.f};
-float b3c_dot_ned[3]{0.f, 0.f, 0.f};
-float b3c_ddot_ned[3]{0.f, 0.f, 0.f};
+float b3c[3]{0.f, 0.f, 1.f};
+float b3c_dot[3]{0.f, 0.f, 0.f};
+float b3c_ddot[3]{0.f, 0.f, 0.f};
 
 // Stage: A2 and unit_vec(A2, A2_dot, A2_ddot)
-float a2_ned[3]{0.f, 1.f, 0.f};
-float a2_dot_ned[3]{0.f, 0.f, 0.f};
-float a2_ddot_ned[3]{0.f, 0.f, 0.f};
+float A2[3]{0.f, 1.f, 0.f};
+float A2_dot[3]{0.f, 0.f, 0.f};
+float A2_ddot[3]{0.f, 0.f, 0.f};
 
-float b2c_ned[3]{0.f, 1.f, 0.f};
-float b2c_dot_ned[3]{0.f, 0.f, 0.f};
-float b2c_ddot_ned[3]{0.f, 0.f, 0.f};
+float b2c[3]{0.f, 1.f, 0.f};
+float b2c_dot[3]{0.f, 0.f, 0.f};
+float b2c_ddot[3]{0.f, 0.f, 0.f};
 
-float rotation_error[3]{0.f, 0.f, 0.f};
+float eR[3]{0.f, 0.f, 0.f};
 
-float desired_angular_velocity_body[3]{0.f, 0.f, 0.f};
-float desired_angular_acceleration_body[3]{0.f, 0.f, 0.f};
-float angular_velocity_error[3]{0.f, 0.f, 0.f};
+float Omegad[3]{0.f, 0.f, 0.f};
+float Omegad_dot[3]{0.f, 0.f, 0.f};
+float ew[3]{0.f, 0.f, 0.f};
 
-float pd_moment_newton_meter[3]{0.f, 0.f, 0.f};
-float feedforward_moment_newton_meter[3]{0.f, 0.f, 0.f};
-float j_omega_body[3]{0.f, 0.f, 0.f};
-float gyro_moment_newton_meter[3]{0.f, 0.f, 0.f};
+float M_feedback[3]{0.f, 0.f, 0.f};
+float M_feedforward[3]{0.f, 0.f, 0.f};
+float JOmega[3]{0.f, 0.f, 0.f};
+float momentAdd[3]{0.f, 0.f, 0.f};
 
-float thrust_newton{0.f};
-float moment_newton_meter[3]{0.f, 0.f, 0.f};
+float target_thrust{0.f};
+float M[3]{0.f, 0.f, 0.f};
 
 bool valid{false};
 };

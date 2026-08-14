@@ -453,10 +453,10 @@ void L1AdaptiveControl::run_l1_adaptive_augmentation()
 	quat_to_rotation_matrix_body_to_ned(_state.quat_body_to_ned, R);
 
 	const float thrustMomentCmd[4] = {
-		_geometric_output.thrust_newton,
-		_geometric_output.moment_newton_meter[0],
-		_geometric_output.moment_newton_meter[1],
-		_geometric_output.moment_newton_meter[2]
+		_geometric_output.target_thrust,
+		_geometric_output.M[0],
+		_geometric_output.M[1],
+		_geometric_output.M[2]
 	};
 
 	if (!_l1_state.initialized) {

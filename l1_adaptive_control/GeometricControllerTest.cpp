@@ -61,20 +61,20 @@ GeometricController::Output output{};
 EXPECT_TRUE(controller.update(input, output));
 ASSERT_TRUE(output.valid);
 
-EXPECT_NEAR(output.desired_body_x_axis_ned[0], 1.f, 1e-4f);
-EXPECT_NEAR(output.desired_body_x_axis_ned[1], 0.f, 1e-4f);
-EXPECT_NEAR(output.desired_body_x_axis_ned[2], 0.f, 1e-4f);
-EXPECT_NEAR(output.desired_body_y_axis_ned[0], 0.f, 1e-4f);
-EXPECT_NEAR(output.desired_body_y_axis_ned[1], 1.f, 1e-4f);
-EXPECT_NEAR(output.desired_body_y_axis_ned[2], 0.f, 1e-4f);
-EXPECT_NEAR(output.desired_body_z_axis_ned[0], 0.f, 1e-4f);
-EXPECT_NEAR(output.desired_body_z_axis_ned[1], 0.f, 1e-4f);
-EXPECT_NEAR(output.desired_body_z_axis_ned[2], 1.f, 1e-4f);
+EXPECT_NEAR(output.x_axis_desired[0], 1.f, 1e-4f);
+EXPECT_NEAR(output.x_axis_desired[1], 0.f, 1e-4f);
+EXPECT_NEAR(output.x_axis_desired[2], 0.f, 1e-4f);
+EXPECT_NEAR(output.y_axis_desired[0], 0.f, 1e-4f);
+EXPECT_NEAR(output.y_axis_desired[1], 1.f, 1e-4f);
+EXPECT_NEAR(output.y_axis_desired[2], 0.f, 1e-4f);
+EXPECT_NEAR(output.z_axis_desired[0], 0.f, 1e-4f);
+EXPECT_NEAR(output.z_axis_desired[1], 0.f, 1e-4f);
+EXPECT_NEAR(output.z_axis_desired[2], 1.f, 1e-4f);
 
-EXPECT_NEAR(norm3(output.desired_angular_velocity_body), 0.f, 1e-5f);
-EXPECT_NEAR(output.thrust_newton, kMassKg * kGravityMss, 1e-3f);
-EXPECT_NEAR(norm3(output.rotation_error), 0.f, 1e-5f);
-EXPECT_NEAR(norm3(output.angular_velocity_error), 0.f, 1e-5f);
+EXPECT_NEAR(norm3(output.Omegad), 0.f, 1e-5f);
+EXPECT_NEAR(output.target_thrust, kMassKg * kGravityMss, 1e-3f);
+EXPECT_NEAR(norm3(output.eR), 0.f, 1e-5f);
+EXPECT_NEAR(norm3(output.ew), 0.f, 1e-5f);
 }
 
 TEST(GeometricController, DynamicCircleDoesNotForceOmegaDToZeroAndStaysFinite)
@@ -114,13 +114,13 @@ GeometricController::Output output{};
 EXPECT_TRUE(controller.update(input, output));
 ASSERT_TRUE(output.valid);
 
-EXPECT_GT(norm3(output.desired_angular_velocity_body), 1e-4f);
-EXPECT_TRUE(finite3(output.desired_angular_velocity_body));
-EXPECT_TRUE(finite3(output.desired_angular_acceleration_body));
-EXPECT_TRUE(finite3(output.moment_newton_meter));
-EXPECT_TRUE(finite3(output.target_force_ned));
-EXPECT_TRUE(finite3(output.target_force_dot_ned));
-EXPECT_TRUE(finite3(output.target_force_ddot_ned));
-EXPECT_TRUE(isfinite(output.thrust_newton));
-EXPECT_TRUE(isfinite(output.target_thrust_dot_newton_s));
+EXPECT_GT(norm3(output.Omegad), 1e-4f);
+EXPECT_TRUE(finite3(output.Omegad));
+EXPECT_TRUE(finite3(output.Omegad_dot));
+EXPECT_TRUE(finite3(output.M));
+EXPECT_TRUE(finite3(output.target_force));
+EXPECT_TRUE(finite3(output.target_force_dot));
+EXPECT_TRUE(finite3(output.target_force_ddot));
+EXPECT_TRUE(isfinite(output.target_thrust));
+EXPECT_TRUE(isfinite(output.target_thrust_dot));
 }

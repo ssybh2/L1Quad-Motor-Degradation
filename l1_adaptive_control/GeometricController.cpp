@@ -220,43 +220,43 @@ return is_finite3(u) && is_finite3(u_dot) && is_finite3(u_ddot);
 
 bool output_is_finite(const GeometricController::Output &output)
 {
-return isfinite(output.thrust_newton)
-       && isfinite(output.target_thrust_dot_newton_s)
-       && is_finite3(output.position_error_ned)
-       && is_finite3(output.velocity_error_ned)
-       && is_finite3(output.acceleration_error_ned)
-       && is_finite3(output.jerk_error_ned)
-       && is_finite3(output.target_force_ned)
-       && is_finite3(output.target_force_dot_ned)
-       && is_finite3(output.target_force_ddot_ned)
-       && is_finite3(output.body_z_axis_ned)
-       && is_finite3(output.body_z_axis_dot_ned)
-       && is_finite3(output.desired_body_x_axis_ned)
-       && is_finite3(output.desired_body_y_axis_ned)
-       && is_finite3(output.desired_body_z_axis_ned)
-       && is_finite3(output.desired_body_x_axis_dot_ned)
-       && is_finite3(output.desired_body_y_axis_dot_ned)
-       && is_finite3(output.desired_body_z_axis_dot_ned)
-       && is_finite3(output.desired_body_x_axis_ddot_ned)
-       && is_finite3(output.desired_body_y_axis_ddot_ned)
-       && is_finite3(output.desired_body_z_axis_ddot_ned)
-       && is_finite_matrix3(output.desired_rotation_matrix)
-       && is_finite_matrix3(output.desired_rotation_matrix_dot)
-       && is_finite_matrix3(output.desired_rotation_matrix_ddot)
-       && is_finite3(output.b3c_ned)
-       && is_finite3(output.b3c_dot_ned)
-       && is_finite3(output.b3c_ddot_ned)
-       && is_finite3(output.b2c_ned)
-       && is_finite3(output.b2c_dot_ned)
-       && is_finite3(output.b2c_ddot_ned)
-       && is_finite3(output.rotation_error)
-       && is_finite3(output.desired_angular_velocity_body)
-       && is_finite3(output.desired_angular_acceleration_body)
-       && is_finite3(output.angular_velocity_error)
-       && is_finite3(output.pd_moment_newton_meter)
-       && is_finite3(output.feedforward_moment_newton_meter)
-       && is_finite3(output.gyro_moment_newton_meter)
-       && is_finite3(output.moment_newton_meter);
+return isfinite(output.target_thrust)
+       && isfinite(output.target_thrust_dot)
+       && is_finite3(output.r_error)
+       && is_finite3(output.v_error)
+       && is_finite3(output.a_error)
+       && is_finite3(output.j_error)
+       && is_finite3(output.target_force)
+       && is_finite3(output.target_force_dot)
+       && is_finite3(output.target_force_ddot)
+       && is_finite3(output.z_axis)
+       && is_finite3(output.b3_dot)
+       && is_finite3(output.x_axis_desired)
+       && is_finite3(output.y_axis_desired)
+       && is_finite3(output.z_axis_desired)
+       && is_finite3(output.x_axis_desired_dot)
+       && is_finite3(output.y_axis_desired_dot)
+       && is_finite3(output.z_axis_desired_dot)
+       && is_finite3(output.x_axis_desired_ddot)
+       && is_finite3(output.y_axis_desired_ddot)
+       && is_finite3(output.z_axis_desired_ddot)
+       && is_finite_matrix3(output.Rdes)
+       && is_finite_matrix3(output.Rd_dot)
+       && is_finite_matrix3(output.Rd_ddot)
+       && is_finite3(output.b3c)
+       && is_finite3(output.b3c_dot)
+       && is_finite3(output.b3c_ddot)
+       && is_finite3(output.b2c)
+       && is_finite3(output.b2c_dot)
+       && is_finite3(output.b2c_ddot)
+       && is_finite3(output.eR)
+       && is_finite3(output.Omegad)
+       && is_finite3(output.Omegad_dot)
+       && is_finite3(output.ew)
+       && is_finite3(output.M_feedback)
+       && is_finite3(output.M_feedforward)
+       && is_finite3(output.momentAdd)
+       && is_finite3(output.M);
 }
 
 }
@@ -266,11 +266,13 @@ bool GeometricController::update(const Input &input, Output &output)
 _last_input = input;
 output = Output{};
 output.timestamp_us = input.timestamp_us;
-const float mass_kg = _parameters.mass_kg;
-const float *kp = _parameters.position_gain;
-const float *kv = _parameters.velocity_gain;
-const float *kr = _parameters.rotation_gain;
-const float *ko = _parameters.angular_velocity_gain;
+const float kg_vehicleMass = _parameters.mass_kg;
+const float *Kp = _parameters.position_gain;
+const float *Kv = _parameters.velocity_gain;
+const float *KR = _parameters.rotation_gain;
+const float *KOmega = _parameters.angular_velocity_gain;
+const float *J = _parameters.inertia_kg_m2;
+const float *Omega = input.angular_velocity_body;
 
 if (!input.state_valid_for_control || !input.armed || input.failsafe) {
 output.valid = false;
@@ -279,32 +281,32 @@ return true;
 }
 
 for (int i = 0; i < 3; i++) {
-output.position_error_ned[i] = input.position_ned[i] - input.target_position_ned[i];
-output.velocity_error_ned[i] = input.velocity_ned[i] - input.target_velocity_ned[i];
+output.r_error[i] = input.position_ned[i] - input.target_position_ned[i];
+output.v_error[i] = input.velocity_ned[i] - input.target_velocity_ned[i];
 }
 
-output.target_force_ned[0] =
-mass_kg * input.target_acceleration_ned[0]
-- kp[0] * output.position_error_ned[0]
-- kv[0] * output.velocity_error_ned[0];
+output.target_force[0] =
+kg_vehicleMass * input.target_acceleration_ned[0]
+- Kp[0] * output.r_error[0]
+- Kv[0] * output.v_error[0];
 
-output.target_force_ned[1] =
-mass_kg * input.target_acceleration_ned[1]
-- kp[1] * output.position_error_ned[1]
-- kv[1] * output.velocity_error_ned[1];
+output.target_force[1] =
+kg_vehicleMass * input.target_acceleration_ned[1]
+- Kp[1] * output.r_error[1]
+- Kv[1] * output.v_error[1];
 
-output.target_force_ned[2] =
-mass_kg * (input.target_acceleration_ned[2] - GRAVITY_MSS)
-- kp[2] * output.position_error_ned[2]
-- kv[2] * output.velocity_error_ned[2];
+output.target_force[2] =
+kg_vehicleMass * (input.target_acceleration_ned[2] - GRAVITY_MSS)
+- Kp[2] * output.r_error[2]
+- Kv[2] * output.v_error[2];
 
 if (input.manual_tilt_enabled) {
-const float vertical_force_ned = output.target_force_ned[2];
+const float vertical_force_ned = output.target_force[2];
 const float inverse_vertical_axis =
 1.f / fmaxf(input.manual_desired_body_z_axis_ned[2], 0.5f);
 
 for (int i = 0; i < 3; i++) {
-output.target_force_ned[i] =
+output.target_force[i] =
 input.manual_desired_body_z_axis_ned[i] * vertical_force_ned * inverse_vertical_axis;
 }
 
@@ -312,141 +314,141 @@ input.manual_desired_body_z_axis_ned[i] * vertical_force_ned * inverse_vertical_
 // A single-motor-out quadrotor cannot reliably hold horizontal position
 // during the spin-up transient. Keep the desired thrust axis vertical and
 // prioritize altitude plus reduced-attitude stabilization.
-output.target_force_ned[0] = 0.f;
-output.target_force_ned[1] = 0.f;
+output.target_force[0] = 0.f;
+output.target_force[1] = 0.f;
 }
 
 float R[3][3]{};
 quat_to_rotation_matrix_body_to_ned(input.quat_body_to_ned, R);
-get_matrix_column(R, 2, output.body_z_axis_ned);
+get_matrix_column(R, 2, output.z_axis);
 
-if (!is_finite_matrix3(R) || !is_finite3(output.body_z_axis_ned)) {
+if (!is_finite_matrix3(R) || !is_finite3(output.z_axis)) {
 output.valid = false;
 _last_output = output;
 return true;
 }
 
-output.thrust_newton = input.yaw_control_enabled
-	? -dot3(output.target_force_ned, output.body_z_axis_ned)
-	: sqrtf(dot3(output.target_force_ned, output.target_force_ned));
+output.target_thrust = input.yaw_control_enabled
+	? -dot3(output.target_force, output.z_axis)
+	: sqrtf(dot3(output.target_force, output.target_force));
 
-output.acceleration_error_ned[0] =
--output.body_z_axis_ned[0] * output.thrust_newton / mass_kg
+output.a_error[0] =
+-output.z_axis[0] * output.target_thrust / kg_vehicleMass
 - input.target_acceleration_ned[0];
 
-output.acceleration_error_ned[1] =
--output.body_z_axis_ned[1] * output.thrust_newton / mass_kg
+output.a_error[1] =
+-output.z_axis[1] * output.target_thrust / kg_vehicleMass
 - input.target_acceleration_ned[1];
 
-output.acceleration_error_ned[2] =
+output.a_error[2] =
 GRAVITY_MSS
-- output.body_z_axis_ned[2] * output.thrust_newton / mass_kg
+- output.z_axis[2] * output.target_thrust / kg_vehicleMass
 - input.target_acceleration_ned[2];
 
-output.target_force_dot_ned[0] =
--kp[0] * output.velocity_error_ned[0]
--kv[0] * output.acceleration_error_ned[0]
-+ mass_kg * input.target_jerk_ned[0];
+output.target_force_dot[0] =
+-Kp[0] * output.v_error[0]
+-Kv[0] * output.a_error[0]
++ kg_vehicleMass * input.target_jerk_ned[0];
 
-output.target_force_dot_ned[1] =
--kp[1] * output.velocity_error_ned[1]
--kv[1] * output.acceleration_error_ned[1]
-+ mass_kg * input.target_jerk_ned[1];
+output.target_force_dot[1] =
+-Kp[1] * output.v_error[1]
+-Kv[1] * output.a_error[1]
++ kg_vehicleMass * input.target_jerk_ned[1];
 
-output.target_force_dot_ned[2] =
--kp[2] * output.velocity_error_ned[2]
--kv[2] * output.acceleration_error_ned[2]
-+ mass_kg * input.target_jerk_ned[2];
+output.target_force_dot[2] =
+-Kp[2] * output.v_error[2]
+-Kv[2] * output.a_error[2]
++ kg_vehicleMass * input.target_jerk_ned[2];
 
 if (input.manual_tilt_enabled) {
-output.target_force_dot_ned[0] = 0.f;
-output.target_force_dot_ned[1] = 0.f;
-output.target_force_dot_ned[2] = 0.f;
+output.target_force_dot[0] = 0.f;
+output.target_force_dot[1] = 0.f;
+output.target_force_dot[2] = 0.f;
 }
 
 const float omega_cross_e3[3] = {
-input.angular_velocity_body[1],
--input.angular_velocity_body[0],
+Omega[1],
+-Omega[0],
 0.f
 };
-mat_vec_mul(R, omega_cross_e3, output.body_z_axis_dot_ned);
+mat_vec_mul(R, omega_cross_e3, output.b3_dot);
 
-output.target_thrust_dot_newton_s =
--dot3(output.target_force_dot_ned, output.body_z_axis_ned)
--dot3(output.target_force_ned, output.body_z_axis_dot_ned);
+output.target_thrust_dot =
+-dot3(output.target_force_dot, output.z_axis)
+-dot3(output.target_force, output.b3_dot);
 
 if (input.manual_tilt_enabled) {
-output.target_thrust_dot_newton_s = 0.f;
+output.target_thrust_dot = 0.f;
 }
 
-output.jerk_error_ned[0] =
--output.body_z_axis_ned[0] * output.target_thrust_dot_newton_s / mass_kg
--output.body_z_axis_dot_ned[0] * output.thrust_newton / mass_kg
+output.j_error[0] =
+-output.z_axis[0] * output.target_thrust_dot / kg_vehicleMass
+-output.b3_dot[0] * output.target_thrust / kg_vehicleMass
 -input.target_jerk_ned[0];
 
-output.jerk_error_ned[1] =
--output.body_z_axis_ned[1] * output.target_thrust_dot_newton_s / mass_kg
--output.body_z_axis_dot_ned[1] * output.thrust_newton / mass_kg
+output.j_error[1] =
+-output.z_axis[1] * output.target_thrust_dot / kg_vehicleMass
+-output.b3_dot[1] * output.target_thrust / kg_vehicleMass
 -input.target_jerk_ned[1];
 
-output.jerk_error_ned[2] =
--output.body_z_axis_ned[2] * output.target_thrust_dot_newton_s / mass_kg
--output.body_z_axis_dot_ned[2] * output.thrust_newton / mass_kg
+output.j_error[2] =
+-output.z_axis[2] * output.target_thrust_dot / kg_vehicleMass
+-output.b3_dot[2] * output.target_thrust / kg_vehicleMass
 -input.target_jerk_ned[2];
 
-output.target_force_ddot_ned[0] =
--kp[0] * output.acceleration_error_ned[0]
--kv[0] * output.jerk_error_ned[0]
-+ mass_kg * input.target_snap_ned[0];
+output.target_force_ddot[0] =
+-Kp[0] * output.a_error[0]
+-Kv[0] * output.j_error[0]
++ kg_vehicleMass * input.target_snap_ned[0];
 
-output.target_force_ddot_ned[1] =
--kp[1] * output.acceleration_error_ned[1]
--kv[1] * output.jerk_error_ned[1]
-+ mass_kg * input.target_snap_ned[1];
+output.target_force_ddot[1] =
+-Kp[1] * output.a_error[1]
+-Kv[1] * output.j_error[1]
++ kg_vehicleMass * input.target_snap_ned[1];
 
-output.target_force_ddot_ned[2] =
--kp[2] * output.acceleration_error_ned[2]
--kv[2] * output.jerk_error_ned[2]
-+ mass_kg * input.target_snap_ned[2];
+output.target_force_ddot[2] =
+-Kp[2] * output.a_error[2]
+-Kv[2] * output.j_error[2]
++ kg_vehicleMass * input.target_snap_ned[2];
 
 if (input.manual_tilt_enabled) {
-output.target_force_ddot_ned[0] = 0.f;
-output.target_force_ddot_ned[1] = 0.f;
-output.target_force_ddot_ned[2] = 0.f;
+output.target_force_ddot[0] = 0.f;
+output.target_force_ddot[1] = 0.f;
+output.target_force_ddot[2] = 0.f;
 }
 
 const float minus_target_force[3] = {
--output.target_force_ned[0],
--output.target_force_ned[1],
--output.target_force_ned[2]
+-output.target_force[0],
+-output.target_force[1],
+-output.target_force[2]
 };
 
 const float minus_target_force_dot[3] = {
--output.target_force_dot_ned[0],
--output.target_force_dot_ned[1],
--output.target_force_dot_ned[2]
+-output.target_force_dot[0],
+-output.target_force_dot[1],
+-output.target_force_dot[2]
 };
 
 const float minus_target_force_ddot[3] = {
--output.target_force_ddot_ned[0],
--output.target_force_ddot_ned[1],
--output.target_force_ddot_ned[2]
+-output.target_force_ddot[0],
+-output.target_force_ddot[1],
+-output.target_force_ddot[2]
 };
 
 if (!unit_vec_with_derivatives(minus_target_force,
 			       minus_target_force_dot,
 			       minus_target_force_ddot,
-			       output.b3c_ned,
-			       output.b3c_dot_ned,
-			       output.b3c_ddot_ned)) {
+				       output.b3c,
+				       output.b3c_dot,
+				       output.b3c_ddot)) {
 output.valid = false;
 _last_output = output;
 return true;
 }
 
-copy3(output.b3c_ned, output.desired_body_z_axis_ned);
-copy3(output.b3c_dot_ned, output.desired_body_z_axis_dot_ned);
-copy3(output.b3c_ddot_ned, output.desired_body_z_axis_ddot_ned);
+copy3(output.b3c, output.z_axis_desired);
+copy3(output.b3c_dot, output.z_axis_desired_dot);
+copy3(output.b3c_ddot, output.z_axis_desired_ddot);
 
 const float yaw = input.target_yaw;
 const float yaw_dot = input.target_yaw_rate;
@@ -470,207 +472,207 @@ const float x_c_des_ddot[3] = {
 0.f
 };
 
-cross3(output.b3c_ned, x_c_des, output.a2_ned);
+cross3(output.b3c, x_c_des, output.A2);
 
-float a2_dot_part1[3]{};
-float a2_dot_part2[3]{};
-cross3(output.b3c_ned, x_c_des_dot, a2_dot_part1);
-cross3(output.b3c_dot_ned, x_c_des, a2_dot_part2);
-
-for (int i = 0; i < 3; i++) {
-output.a2_dot_ned[i] = a2_dot_part1[i] + a2_dot_part2[i];
-}
-
-float a2_ddot_part1[3]{};
-float a2_ddot_part2[3]{};
-float a2_ddot_part3[3]{};
-cross3(output.b3c_ned, x_c_des_ddot, a2_ddot_part1);
-cross3(output.b3c_dot_ned, x_c_des_dot, a2_ddot_part2);
-cross3(output.b3c_ddot_ned, x_c_des, a2_ddot_part3);
+float A2_dot_part1[3]{};
+float A2_dot_part2[3]{};
+cross3(output.b3c, x_c_des_dot, A2_dot_part1);
+cross3(output.b3c_dot, x_c_des, A2_dot_part2);
 
 for (int i = 0; i < 3; i++) {
-output.a2_ddot_ned[i] =
-a2_ddot_part1[i]
-+ 2.f * a2_ddot_part2[i]
-+ a2_ddot_part3[i];
+output.A2_dot[i] = A2_dot_part1[i] + A2_dot_part2[i];
 }
 
-if (!unit_vec_with_derivatives(output.a2_ned,
-			       output.a2_dot_ned,
-			       output.a2_ddot_ned,
-			       output.b2c_ned,
-			       output.b2c_dot_ned,
-			       output.b2c_ddot_ned)) {
+float A2_ddot_part1[3]{};
+float A2_ddot_part2[3]{};
+float A2_ddot_part3[3]{};
+cross3(output.b3c, x_c_des_ddot, A2_ddot_part1);
+cross3(output.b3c_dot, x_c_des_dot, A2_ddot_part2);
+cross3(output.b3c_ddot, x_c_des, A2_ddot_part3);
+
+for (int i = 0; i < 3; i++) {
+output.A2_ddot[i] =
+A2_ddot_part1[i]
++ 2.f * A2_ddot_part2[i]
++ A2_ddot_part3[i];
+}
+
+if (!unit_vec_with_derivatives(output.A2,
+			       output.A2_dot,
+			       output.A2_ddot,
+			       output.b2c,
+			       output.b2c_dot,
+			       output.b2c_ddot)) {
 output.valid = false;
 _last_output = output;
 return true;
 }
 
-copy3(output.b2c_ned, output.desired_body_y_axis_ned);
-copy3(output.b2c_dot_ned, output.desired_body_y_axis_dot_ned);
-copy3(output.b2c_ddot_ned, output.desired_body_y_axis_ddot_ned);
+copy3(output.b2c, output.y_axis_desired);
+copy3(output.b2c_dot, output.y_axis_desired_dot);
+copy3(output.b2c_ddot, output.y_axis_desired_ddot);
 
-cross3(output.desired_body_y_axis_ned,
-       output.desired_body_z_axis_ned,
-       output.desired_body_x_axis_ned);
+cross3(output.y_axis_desired,
+       output.z_axis_desired,
+       output.x_axis_desired);
 
 float b1c_dot_part1[3]{};
 float b1c_dot_part2[3]{};
-cross3(output.desired_body_y_axis_dot_ned,
-       output.desired_body_z_axis_ned,
+cross3(output.y_axis_desired_dot,
+       output.z_axis_desired,
        b1c_dot_part1);
-cross3(output.desired_body_y_axis_ned,
-       output.desired_body_z_axis_dot_ned,
+cross3(output.y_axis_desired,
+       output.z_axis_desired_dot,
        b1c_dot_part2);
 
 for (int i = 0; i < 3; i++) {
-output.desired_body_x_axis_dot_ned[i] = b1c_dot_part1[i] + b1c_dot_part2[i];
+output.x_axis_desired_dot[i] = b1c_dot_part1[i] + b1c_dot_part2[i];
 }
 
 float b1c_ddot_part1[3]{};
 float b1c_ddot_part2[3]{};
 float b1c_ddot_part3[3]{};
-cross3(output.desired_body_y_axis_ddot_ned,
-       output.desired_body_z_axis_ned,
+cross3(output.y_axis_desired_ddot,
+       output.z_axis_desired,
        b1c_ddot_part1);
-cross3(output.desired_body_y_axis_dot_ned,
-       output.desired_body_z_axis_dot_ned,
+cross3(output.y_axis_desired_dot,
+       output.z_axis_desired_dot,
        b1c_ddot_part2);
-cross3(output.desired_body_y_axis_ned,
-       output.desired_body_z_axis_ddot_ned,
+cross3(output.y_axis_desired,
+       output.z_axis_desired_ddot,
        b1c_ddot_part3);
 
 for (int i = 0; i < 3; i++) {
-output.desired_body_x_axis_ddot_ned[i] =
+output.x_axis_desired_ddot[i] =
 b1c_ddot_part1[i]
 + 2.f * b1c_ddot_part2[i]
 + b1c_ddot_part3[i];
 }
 
-if (!normalize3(output.desired_body_x_axis_ned)) {
+if (!normalize3(output.x_axis_desired)) {
 output.valid = false;
 _last_output = output;
 return true;
 }
 
-set_matrix_column(output.desired_rotation_matrix, 0, output.desired_body_x_axis_ned);
-set_matrix_column(output.desired_rotation_matrix, 1, output.desired_body_y_axis_ned);
-set_matrix_column(output.desired_rotation_matrix, 2, output.desired_body_z_axis_ned);
+set_matrix_column(output.Rdes, 0, output.x_axis_desired);
+set_matrix_column(output.Rdes, 1, output.y_axis_desired);
+set_matrix_column(output.Rdes, 2, output.z_axis_desired);
 
-set_matrix_column(output.desired_rotation_matrix_dot, 0, output.desired_body_x_axis_dot_ned);
-set_matrix_column(output.desired_rotation_matrix_dot, 1, output.desired_body_y_axis_dot_ned);
-set_matrix_column(output.desired_rotation_matrix_dot, 2, output.desired_body_z_axis_dot_ned);
+set_matrix_column(output.Rd_dot, 0, output.x_axis_desired_dot);
+set_matrix_column(output.Rd_dot, 1, output.y_axis_desired_dot);
+set_matrix_column(output.Rd_dot, 2, output.z_axis_desired_dot);
 
-set_matrix_column(output.desired_rotation_matrix_ddot, 0, output.desired_body_x_axis_ddot_ned);
-set_matrix_column(output.desired_rotation_matrix_ddot, 1, output.desired_body_y_axis_ddot_ned);
-set_matrix_column(output.desired_rotation_matrix_ddot, 2, output.desired_body_z_axis_ddot_ned);
+set_matrix_column(output.Rd_ddot, 0, output.x_axis_desired_ddot);
+set_matrix_column(output.Rd_ddot, 1, output.y_axis_desired_ddot);
+set_matrix_column(output.Rd_ddot, 2, output.z_axis_desired_ddot);
 
-compute_rotation_error(R, output.desired_rotation_matrix, output.rotation_error);
+compute_rotation_error(R, output.Rdes, output.eR);
 
 float RdT_Rd_dot[3][3]{};
-mat_transpose_mat(output.desired_rotation_matrix, output.desired_rotation_matrix_dot, RdT_Rd_dot);
-vee3(RdT_Rd_dot, output.desired_angular_velocity_body);
+mat_transpose_mat(output.Rdes, output.Rd_dot, RdT_Rd_dot);
+vee3(RdT_Rd_dot, output.Omegad);
 
 float RdT_Rd_ddot[3][3]{};
-float omega_d_hat[3][3]{};
-float omega_d_hat_sq[3][3]{};
-float omega_d_dot_matrix[3][3]{};
-mat_transpose_mat(output.desired_rotation_matrix, output.desired_rotation_matrix_ddot, RdT_Rd_ddot);
-hat3(output.desired_angular_velocity_body, omega_d_hat);
-mat_mul(omega_d_hat, omega_d_hat, omega_d_hat_sq);
-mat_sub(RdT_Rd_ddot, omega_d_hat_sq, omega_d_dot_matrix);
-vee3(omega_d_dot_matrix, output.desired_angular_acceleration_body);
+float Omegad_hat[3][3]{};
+float Omegad_hat_sq[3][3]{};
+float Omegad_dot_matrix[3][3]{};
+mat_transpose_mat(output.Rdes, output.Rd_ddot, RdT_Rd_ddot);
+hat3(output.Omegad, Omegad_hat);
+mat_mul(Omegad_hat, Omegad_hat, Omegad_hat_sq);
+mat_sub(RdT_Rd_ddot, Omegad_hat_sq, Omegad_dot_matrix);
+vee3(Omegad_dot_matrix, output.Omegad_dot);
 
 float RT_Rd[3][3]{};
-mat_transpose_mat(R, output.desired_rotation_matrix, RT_Rd);
+mat_transpose_mat(R, output.Rdes, RT_Rd);
 
-float RT_Rd_omega_d[3]{};
-float RT_Rd_omega_d_dot[3]{};
-mat_vec_mul(RT_Rd, output.desired_angular_velocity_body, RT_Rd_omega_d);
-mat_vec_mul(RT_Rd, output.desired_angular_acceleration_body, RT_Rd_omega_d_dot);
+float RT_Rd_Omegad[3]{};
+float RT_Rd_Omegad_dot[3]{};
+mat_vec_mul(RT_Rd, output.Omegad, RT_Rd_Omegad);
+mat_vec_mul(RT_Rd, output.Omegad_dot, RT_Rd_Omegad_dot);
 
 for (int i = 0; i < 3; i++) {
-output.angular_velocity_error[i] = input.angular_velocity_body[i] - RT_Rd_omega_d[i];
+output.ew[i] = Omega[i] - RT_Rd_Omegad[i];
 }
 
 if (!input.yaw_control_enabled) {
 // Reduced-attitude error: align the current thrust axis with the desired
 // thrust axis while leaving rotation about that axis unconstrained.
 float reduced_rotation_error_ned[3]{};
-cross3(output.desired_body_z_axis_ned, output.body_z_axis_ned, reduced_rotation_error_ned);
+cross3(output.z_axis_desired, output.z_axis, reduced_rotation_error_ned);
 
 for (int i = 0; i < 3; i++) {
-output.rotation_error[i] =
+output.eR[i] =
 R[0][i] * reduced_rotation_error_ned[0]
 + R[1][i] * reduced_rotation_error_ned[1]
 + R[2][i] * reduced_rotation_error_ned[2];
 }
 
-output.angular_velocity_error[0] = input.angular_velocity_body[0];
-output.angular_velocity_error[1] = input.angular_velocity_body[1];
-output.angular_velocity_error[2] = 0.f;
+output.ew[0] = Omega[0];
+output.ew[1] = Omega[1];
+output.ew[2] = 0.f;
 }
 
-output.pd_moment_newton_meter[0] =
--kr[0] * output.rotation_error[0]
--ko[0] * output.angular_velocity_error[0];
+output.M_feedback[0] =
+-KR[0] * output.eR[0]
+-KOmega[0] * output.ew[0];
 
-output.pd_moment_newton_meter[1] =
--kr[1] * output.rotation_error[1]
--ko[1] * output.angular_velocity_error[1];
+output.M_feedback[1] =
+-KR[1] * output.eR[1]
+-KOmega[1] * output.ew[1];
 
-output.pd_moment_newton_meter[2] =
+output.M_feedback[2] =
 input.yaw_control_enabled
-? -kr[2] * output.rotation_error[2] - ko[2] * output.angular_velocity_error[2]
+? -KR[2] * output.eR[2] - KOmega[2] * output.ew[2]
 : 0.f;
 
-float omega_hat[3][3]{};
-float omega_hat_rt_rd_omega_d[3]{};
-hat3(input.angular_velocity_body, omega_hat);
-mat_vec_mul(omega_hat, RT_Rd_omega_d, omega_hat_rt_rd_omega_d);
+float Omega_hat[3][3]{};
+float Omega_hat_RT_Rd_Omegad[3]{};
+hat3(Omega, Omega_hat);
+mat_vec_mul(Omega_hat, RT_Rd_Omegad, Omega_hat_RT_Rd_Omegad);
 
 const float feedforward_argument[3] = {
-omega_hat_rt_rd_omega_d[0] - RT_Rd_omega_d_dot[0],
-omega_hat_rt_rd_omega_d[1] - RT_Rd_omega_d_dot[1],
-omega_hat_rt_rd_omega_d[2] - RT_Rd_omega_d_dot[2]
+Omega_hat_RT_Rd_Omegad[0] - RT_Rd_Omegad_dot[0],
+Omega_hat_RT_Rd_Omegad[1] - RT_Rd_Omegad_dot[1],
+Omega_hat_RT_Rd_Omegad[2] - RT_Rd_Omegad_dot[2]
 };
 
-float j_feedforward_argument[3]{};
-inertia_mul(_parameters.inertia_kg_m2, feedforward_argument, j_feedforward_argument);
+float J_feedforward_argument[3]{};
+inertia_mul(J, feedforward_argument, J_feedforward_argument);
 
 for (int i = 0; i < 3; i++) {
-output.feedforward_moment_newton_meter[i] = -j_feedforward_argument[i];
+output.M_feedforward[i] = -J_feedforward_argument[i];
 }
 
-inertia_mul(_parameters.inertia_kg_m2, input.angular_velocity_body, output.j_omega_body);
-cross3(input.angular_velocity_body,
-       output.j_omega_body,
-       output.gyro_moment_newton_meter);
+inertia_mul(J, Omega, output.JOmega);
+cross3(Omega,
+       output.JOmega,
+       output.momentAdd);
 
 for (int i = 0; i < 3; i++) {
-output.moment_newton_meter[i] =
-output.pd_moment_newton_meter[i]
-+ output.feedforward_moment_newton_meter[i]
-+ output.gyro_moment_newton_meter[i];
+output.M[i] =
+output.M_feedback[i]
++ output.M_feedforward[i]
++ output.momentAdd[i];
 }
 
 if (!input.yaw_control_enabled) {
 for (int i = 0; i < 3; i++) {
-output.feedforward_moment_newton_meter[i] = 0.f;
+output.M_feedforward[i] = 0.f;
 }
 
-output.moment_newton_meter[0] = output.pd_moment_newton_meter[0] + output.gyro_moment_newton_meter[0];
-output.moment_newton_meter[1] = output.pd_moment_newton_meter[1] + output.gyro_moment_newton_meter[1];
-output.moment_newton_meter[2] = 0.f;
+output.M[0] = output.M_feedback[0] + output.momentAdd[0];
+output.M[1] = output.M_feedback[1] + output.momentAdd[1];
+output.M[2] = 0.f;
 }
 
-output.valid = output_is_finite(output) && output.thrust_newton > 0.f;
+output.valid = output_is_finite(output) && output.target_thrust > 0.f;
 
 if (!output.valid) {
-output.moment_newton_meter[0] = 0.f;
-output.moment_newton_meter[1] = 0.f;
-output.moment_newton_meter[2] = 0.f;
-output.thrust_newton = 0.f;
+output.M[0] = 0.f;
+output.M[1] = 0.f;
+output.M[2] = 0.f;
+output.target_thrust = 0.f;
 }
 
 _last_output = output;
