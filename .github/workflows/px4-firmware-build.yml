@@ -24,6 +24,19 @@ jobs:
       - name: Install L1/DSun integration into PX4
         run: ./scripts/install_main.sh ./PX4-Autopilot
 
+      - name: Trim non-multicopter modules
+        run: |
+          BOARD=./PX4-Autopilot/boards/px4/fmu-v6c/default.px4board
+          sed -i '/^CONFIG_MODULES_FW_ATT_CONTROL=y$/d' "$BOARD"
+          sed -i '/^CONFIG_MODULES_FW_AUTOTUNE_ATTITUDE_CONTROL=y$/d' "$BOARD"
+          sed -i '/^CONFIG_MODULES_FW_MODE_MANAGER=y$/d' "$BOARD"
+          sed -i '/^CONFIG_MODULES_FW_LATERAL_LONGITUDINAL_CONTROL=y$/d' "$BOARD"
+          sed -i '/^CONFIG_MODULES_FW_RATE_CONTROL=y$/d' "$BOARD"
+          sed -i '/^CONFIG_MODULES_GIMBAL=y$/d' "$BOARD"
+          sed -i '/^CONFIG_MODULES_VTOL_ATT_CONTROL=y$/d' "$BOARD"
+          echo 'Retained L1 and multicopter modules; removed fixed-wing/VTOL/gimbal modules.'
+          grep -E 'CONFIG_MODULES_(L1_ADAPTIVE_CONTROL|MC_|FW_|VTOL|GIMBAL)' "$BOARD" || true
+
       - name: Build Pixhawk 6C Mini firmware
         run: make -C ./PX4-Autopilot px4_fmu-v6c_default -j2
 
