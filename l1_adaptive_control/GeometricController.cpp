@@ -1,5 +1,7 @@
 #include "GeometricController.hpp"
 
+// DSun geometric-controller core with PX4/L1 interface and safety adaptations.
+
 #include <matrix/matrix/math.hpp>
 
 #include <math.h>
@@ -182,6 +184,9 @@ bool GeometricController::update(const Input &input, Output &output)
 				 input.target_acceleration_ned[2]};
 	const Vector3f targetJerk{input.target_jerk_ned[0], input.target_jerk_ned[1], input.target_jerk_ned[2]};
 	const Vector3f targetSnap{input.target_snap_ned[0], input.target_snap_ned[1], input.target_snap_ned[2]};
+
+	// DSun uses the heading vector [cos(yaw), sin(yaw)] and its first two derivatives.
+	// Keep the upstream PX4 scalar yaw interface and construct those vectors here.
 	const Vector2f targetYaw{cosf(input.target_yaw), sinf(input.target_yaw)};
 	const Vector2f targetYaw_dot{-sinf(input.target_yaw) * input.target_yaw_rate,
 				     cosf(input.target_yaw) * input.target_yaw_rate};
@@ -189,10 +194,10 @@ bool GeometricController::update(const Input &input, Output &output)
 				       - sinf(input.target_yaw) * input.target_yaw_accel,
 				       -sinf(input.target_yaw) * input.target_yaw_rate * input.target_yaw_rate
 				       + cosf(input.target_yaw) * input.target_yaw_accel};
+
 	const Vector3f statePos{input.position_ned[0], input.position_ned[1], input.position_ned[2]};
 	const Vector3f stateVel{input.velocity_ned[0], input.velocity_ned[1], input.velocity_ned[2]};
-	const Vector3f Omega{input.angular_velocity_body[0], input.angular_velocity_body[1],
-			     input.angular_velocity_body[2]};
+	const Vector3f Omega{input.angular_velocity_body[0], input.angular_velocity_body[1], input.angular_velocity_body[2]};
 	const Vector3f e3{0.f, 0.f, 1.f};
 
 	// Position Error (ep)
@@ -208,6 +213,7 @@ bool GeometricController::update(const Input &input, Output &output)
 	target_force(2) = kg_vehicleMass * (targetAcc(2) - GRAVITY_MAGNITUDE) - GeoCtrl_Kpz * r_error(2)
 			  - GeoCtrl_Kvz * v_error(2);
 
+	// PX4/L1 failure-mode adapter retained around the DSun force law.
 	if (input.manual_tilt_enabled) {
 		const Vector3f manual_z_axis{input.manual_desired_body_z_axis_ned[0], input.manual_desired_body_z_axis_ned[1],
 					   input.manual_desired_body_z_axis_ned[2]};
@@ -304,7 +310,7 @@ bool GeometricController::update(const Input &input, Output &output)
 	Vector3f target_force_ddot;
 	target_force_ddot(0) = -GeoCtrl_Kpx * a_error(0) - GeoCtrl_Kvx * j_error(0)
 				+ kg_vehicleMass * targetSnap(0);
-	target_force_ddot(1) = -GeoCtrl_Kpy * a_error(1) - GeoCtrl_Kvy * j_error(1)
+	target_force_ddot(1) = -GeoCtrl_Kpy * a_error(1) - GeoCtrl_Kvx * 0.f - GeoCtrl_Kvy * j_error(1)
 				+ kg_vehicleMass * targetSnap(1);
 	target_force_ddot(2) = -GeoCtrl_Kpz * a_error(2) - GeoCtrl_Kvz * j_error(2)
 				+ kg_vehicleMass * targetSnap(2);
@@ -388,6 +394,8 @@ bool GeometricController::update(const Input &input, Output &output)
 	// Copy the original controller variables back to the PX4 output interface.
 	copy_vector(r_error, output.r_error);
 	copy_vector(v_error, output.v_error);
+	copy_vector(M, output.M);
+	output.target_thrust = target_thrust;
 	copy_vector(target_force, output.target_force);
 	copy_vector(z_axis, output.z_axis);
 	copy_vector(x_axis_desired, output.x_axis_desired);
@@ -418,8 +426,6 @@ bool GeometricController::update(const Input &input, Output &output)
 	copy_vector(Omegad_dot, output.Omegad_dot);
 	copy_vector(ew, output.ew);
 	copy_vector(momentAdd, output.momentAdd);
-	output.target_thrust = target_thrust;
-	copy_vector(M, output.M);
 
 	output.valid = output_is_finite(output) && output.target_thrust > 0.f;
 
