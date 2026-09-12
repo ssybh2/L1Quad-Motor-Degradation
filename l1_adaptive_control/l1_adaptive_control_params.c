@@ -113,7 +113,6 @@ PARAM_DEFINE_FLOAT(L1_MAN_VZ, 0.3f);
 /**
  * Manual minimum takeoff height
  *
- * @unit m
  * @min 0.0
  * @max 10.0
  * @decimal 2
@@ -125,7 +124,6 @@ PARAM_DEFINE_FLOAT(L1_MAN_HMIN, 0.5f);
 /**
  * Manual maximum height
  *
- * @unit m
  * @min 0.1
  * @max 50.0
  * @decimal 2
@@ -332,7 +330,7 @@ PARAM_DEFINE_FLOAT(L1_KOZ, 0.004f);
  * @boolean
  * @group L1 Adaptive Control
  */
-PARAM_DEFINE_INT32(L1_ADAPT_EN, 1);
+PARAM_DEFINE_INT32(L1_ADAPT_EN, 0);
 
 /**
  * L1 velocity predictor pole
