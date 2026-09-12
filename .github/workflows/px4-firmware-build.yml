@@ -1,0 +1,43 @@
+name: PX4 firmware build
+
+on:
+  push:
+    branches:
+      - dsun-px4-build-test
+  workflow_dispatch:
+
+jobs:
+  build-pixhawk6cmini:
+    runs-on: ubuntu-latest
+    container:
+      image: px4io/px4-dev-nuttx-focal:2022-08-12
+    steps:
+      - name: Checkout controller repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Mark repositories safe
+        run: git config --global --add safe.directory '*'
+
+      - name: Install L1/DSun integration into PX4
+        run: ./scripts/install_main.sh ./PX4-Autopilot
+
+      - name: Build Pixhawk 6C Mini firmware
+        run: make -C ./PX4-Autopilot px4_fmu-v6c_default -j2
+
+      - name: Collect firmware
+        if: success()
+        run: |
+          mkdir -p build-artifacts
+          cp ./PX4-Autopilot/build/px4_fmu-v6c_default/px4_fmu-v6c_default.px4 \
+             ./build-artifacts/L1Quad-DSun-pixhawk6cmini.px4
+
+      - name: Upload firmware artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: L1Quad-DSun-Pixhawk6C-Mini
+          path: build-artifacts/L1Quad-DSun-pixhawk6cmini.px4
+          if-no-files-found: error
