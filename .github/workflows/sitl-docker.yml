@@ -36,21 +36,28 @@ jobs:
 
       - name: Headless Gazebo X500 smoke test
         run: |
-          set +e
-          timeout 35s docker compose run --rm --user 0:0 -e HEADLESS=1 sitl bash -lc '
+          set -euo pipefail
+          name="l1quad-sitl-smoke-${GITHUB_RUN_ID}"
+          cleanup() {
+            docker rm -f "$name" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker compose run -d --name "$name" --user 0:0 -e HEADLESS=1 sitl bash -lc '
             set -euo pipefail
             mkdir -p "$HOME"
             git config --global --add safe.directory "*"
             ./scripts/install_sitl.sh ./PX4-Autopilot
             make -C ./PX4-Autopilot px4_sitl gz_x500
-          ' 2>&1 | tee /tmp/gz_x500.log
-          rc=${PIPESTATUS[0]}
-          set -e
+          '
 
-          # A running simulation is expected to be terminated by timeout.
-          if [[ "$rc" -ne 0 && "$rc" -ne 124 ]]; then
-            echo "Gazebo X500 smoke test exited unexpectedly: $rc" >&2
-            exit "$rc"
+          sleep 25
+          docker logs "$name" 2>&1 | tee /tmp/gz_x500.log
+
+          if [[ "$(docker inspect -f "{{.State.Running}}" "$name")" != "true" ]]; then
+            echo "Gazebo X500 container exited during startup" >&2
+            docker inspect "$name" >&2 || true
+            exit 1
           fi
 
           if grep -q 'Gazebo simulation dependencies not found' /tmp/gz_x500.log; then
@@ -58,7 +65,8 @@ jobs:
             exit 1
           fi
 
-          grep -E 'gz_bridge|Gazebo|PX4|pxh>|Ready for takeoff' /tmp/gz_x500.log | tail -n 60 || true
+          grep -E 'gz_bridge|Gazebo|PX4|pxh>|Ready for takeoff|l1_adaptive_control' /tmp/gz_x500.log | tail -n 80 || true
+          echo "Headless Gazebo X500 stayed alive for the smoke-test window"
 
       - name: Show SITL integration config
         if: always()
