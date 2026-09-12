@@ -1,5 +1,8 @@
 #pragma once
 
+// DSun geometric-controller core adapted to the existing PX4/L1 module interface.
+// The public interface is intentionally kept compatible with L1AdaptiveControl and its tests.
+
 #include <drivers/drv_hrt.h>
 
 #include <stdint.h>
@@ -30,11 +33,14 @@ public:
 		float target_jerk_ned[3]{0.f, 0.f, 0.f};
 		float target_snap_ned[3]{0.f, 0.f, 0.f};
 
+		// PX4-facing yaw representation. The DSun controller converts these
+		// scalar yaw kinematics to the 2-D heading-vector representation internally.
 		float target_yaw{0.f};
 		float target_yaw_rate{0.f};
 		float target_yaw_accel{0.f};
 		bool yaw_control_enabled{true};
 
+		// Retained for the repository's L1 altitude-failure mode.
 		bool manual_tilt_enabled{false};
 		float manual_desired_body_z_axis_ned[3]{0.f, 0.f, 1.f};
 
@@ -49,6 +55,8 @@ public:
 
 		float r_error[3]{0.f, 0.f, 0.f};
 		float v_error[3]{0.f, 0.f, 0.f};
+		float target_thrust{0.f};
+		float M[3]{0.f, 0.f, 0.f};
 		float target_force[3]{0.f, 0.f, 0.f};
 		float z_axis[3]{0.f, 0.f, 1.f};
 		float x_axis_desired[3]{1.f, 0.f, 0.f};
@@ -82,8 +90,6 @@ public:
 		float ew[3]{0.f, 0.f, 0.f};
 
 		float momentAdd[3]{0.f, 0.f, 0.f};
-		float target_thrust{0.f};
-		float M[3]{0.f, 0.f, 0.f};
 
 		bool valid{false};
 	};
