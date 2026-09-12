@@ -1,0 +1,12 @@
+FROM px4io/px4-dev-simulation-jammy:2024-05-18
+
+SHELL ["/bin/bash", "-lc"]
+WORKDIR /workspace
+
+# Keep the image focused on reproducible PX4/Gazebo dependencies. The project
+# source is bind-mounted by docker-compose so controller edits do not require
+# rebuilding the image.
+ENV DEBIAN_FRONTEND=noninteractive
+ENV QT_X11_NO_MITSHM=1
+
+CMD ["/bin/bash"]

@@ -1,0 +1,19 @@
+services:
+  sitl:
+    build:
+      context: .
+      dockerfile: Dockerfile.sitl
+    image: l1quad-dsun-sitl:local
+    network_mode: host
+    ipc: host
+    working_dir: /workspace
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    environment:
+      HOME: /tmp/l1quad-home
+      DISPLAY: "${DISPLAY:-:0}"
+      QT_X11_NO_MITSHM: "1"
+    volumes:
+      - .:/workspace
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    stdin_open: true
+    tty: true

@@ -1,0 +1,38 @@
+name: DSun SITL Docker build
+
+on:
+  push:
+    branches:
+      - dsun-sitl-docker
+  workflow_dispatch:
+
+jobs:
+  build-sitl-in-docker:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout controller repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Build pinned SITL Docker image
+        run: docker compose build
+
+      - name: Compile PX4 SITL with DSun/L1
+        run: |
+          docker compose run --rm --user 0:0 sitl bash -lc '
+            set -euo pipefail
+            mkdir -p "$HOME"
+            git config --global --add safe.directory "*"
+            ./scripts/install_sitl.sh ./PX4-Autopilot
+            make -C ./PX4-Autopilot px4_sitl_default -j2
+            test -f ./PX4-Autopilot/build/px4_sitl_default/src/modules/l1_adaptive_control/libmodules__l1_adaptive_control.a
+            echo "DSun/L1 SITL build verified"
+          '
+
+      - name: Show SITL integration config
+        if: always()
+        run: |
+          grep -n 'CONFIG_MODULES_L1_ADAPTIVE_CONTROL' ./PX4-Autopilot/boards/px4/sitl/default.px4board || true
