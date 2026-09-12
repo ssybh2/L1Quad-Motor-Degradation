@@ -20,7 +20,7 @@ jobs:
       - name: Build pinned SITL Docker image
         run: docker compose build
 
-      - name: Compile PX4 SITL with DSun/L1
+      - name: Compile PX4 SITL with DSun/L1 and Gazebo bridge
         run: |
           docker compose run --rm --user 0:0 sitl bash -lc '
             set -euo pipefail
@@ -29,8 +29,36 @@ jobs:
             ./scripts/install_sitl.sh ./PX4-Autopilot
             make -C ./PX4-Autopilot px4_sitl_default -j2
             test -f ./PX4-Autopilot/build/px4_sitl_default/src/modules/l1_adaptive_control/libmodules__l1_adaptive_control.a
-            echo "DSun/L1 SITL build verified"
+            test -f ./PX4-Autopilot/build/px4_sitl_default/src/modules/simulation/gz_bridge/libmodules__simulation__gz_bridge.a
+            gz sim --versions
+            echo "DSun/L1 + Gazebo bridge SITL build verified"
           '
+
+      - name: Headless Gazebo X500 smoke test
+        run: |
+          set +e
+          timeout 35s docker compose run --rm --user 0:0 -e HEADLESS=1 sitl bash -lc '
+            set -euo pipefail
+            mkdir -p "$HOME"
+            git config --global --add safe.directory "*"
+            ./scripts/install_sitl.sh ./PX4-Autopilot
+            make -C ./PX4-Autopilot px4_sitl gz_x500
+          ' 2>&1 | tee /tmp/gz_x500.log
+          rc=${PIPESTATUS[0]}
+          set -e
+
+          # A running simulation is expected to be terminated by timeout.
+          if [[ "$rc" -ne 0 && "$rc" -ne 124 ]]; then
+            echo "Gazebo X500 smoke test exited unexpectedly: $rc" >&2
+            exit "$rc"
+          fi
+
+          if grep -q 'Gazebo simulation dependencies not found' /tmp/gz_x500.log; then
+            echo "Gazebo dependencies are still missing" >&2
+            exit 1
+          fi
+
+          grep -E 'gz_bridge|Gazebo|PX4|pxh>|Ready for takeoff' /tmp/gz_x500.log | tail -n 60 || true
 
       - name: Show SITL integration config
         if: always()
