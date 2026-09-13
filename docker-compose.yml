@@ -12,6 +12,7 @@ services:
       HOME: /tmp/l1quad-home
       DISPLAY: "${DISPLAY:-:0}"
       QT_X11_NO_MITSHM: "1"
+      GZ_PARTITION: "${GZ_PARTITION:-l1quad_sitl}"
     volumes:
       - .:/workspace
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
