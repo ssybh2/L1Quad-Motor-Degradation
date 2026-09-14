@@ -7,39 +7,25 @@
 namespace
 {
 
-static constexpr float kMassKg = 3.0f;
 static constexpr float kGravityMss = 9.80665f;
 
 GeometricController::Input make_hover_input()
 {
 	GeometricController::Input input{};
 	input.timestamp_us = 1'000'000;
-	input.position_ned[0] = 0.f;
-	input.position_ned[1] = 0.f;
 	input.position_ned[2] = -1.f;
-	input.velocity_ned[0] = 0.f;
-	input.velocity_ned[1] = 0.f;
-	input.velocity_ned[2] = 0.f;
-	input.quat_body_to_ned[0] = 1.f;
-	input.quat_body_to_ned[1] = 0.f;
-	input.quat_body_to_ned[2] = 0.f;
-	input.quat_body_to_ned[3] = 0.f;
-	input.angular_velocity_body[0] = 0.f;
-	input.angular_velocity_body[1] = 0.f;
-	input.angular_velocity_body[2] = 0.f;
-	input.target_position_ned[0] = 0.f;
-	input.target_position_ned[1] = 0.f;
 	input.target_position_ned[2] = -1.f;
-	input.target_yaw = 0.f;
+	input.quat_body_to_ned[0] = 1.f;
+	input.target_yaw[0] = 1.f;
+	input.target_yaw[1] = 0.f;
+	input.target_yaw_dot[0] = 0.f;
+	input.target_yaw_dot[1] = 0.f;
+	input.target_yaw_ddot[0] = 0.f;
+	input.target_yaw_ddot[1] = 0.f;
 	input.state_valid_for_control = true;
 	input.armed = true;
 	input.failsafe = false;
 	return input;
-}
-
-bool finite3(const float v[3])
-{
-	return isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
 }
 
 float norm3(const float v[3])
@@ -49,78 +35,52 @@ float norm3(const float v[3])
 
 } // namespace
 
-TEST(GeometricController, HoverProducesLevelAttitudeZeroOmegaDAndWeightThrust)
+TEST(GeometricController, UploadedDSunHoverMatchesOriginalControllerEquation)
 {
 	GeometricController controller;
-	GeometricController::Parameters parameters = controller.parameters();
-	parameters.mass_kg = kMassKg;
+	GeometricController::Parameters parameters{};
 	controller.set_parameters(parameters);
-	GeometricController::Input input = make_hover_input();
-	GeometricController::Output output{};
 
-	EXPECT_TRUE(controller.update(input, output));
+	GeometricController::Output output{};
+	EXPECT_TRUE(controller.update(make_hover_input(), output));
 	ASSERT_TRUE(output.valid);
 
-	EXPECT_NEAR(output.x_axis_desired[0], 1.f, 1e-4f);
-	EXPECT_NEAR(output.x_axis_desired[1], 0.f, 1e-4f);
-	EXPECT_NEAR(output.x_axis_desired[2], 0.f, 1e-4f);
-	EXPECT_NEAR(output.y_axis_desired[0], 0.f, 1e-4f);
-	EXPECT_NEAR(output.y_axis_desired[1], 1.f, 1e-4f);
-	EXPECT_NEAR(output.y_axis_desired[2], 0.f, 1e-4f);
-	EXPECT_NEAR(output.z_axis_desired[0], 0.f, 1e-4f);
-	EXPECT_NEAR(output.z_axis_desired[1], 0.f, 1e-4f);
-	EXPECT_NEAR(output.z_axis_desired[2], 1.f, 1e-4f);
-
-	EXPECT_NEAR(norm3(output.Omegad), 0.f, 1e-5f);
-	EXPECT_NEAR(output.target_thrust, kMassKg * kGravityMss, 1e-3f);
-	EXPECT_NEAR(norm3(output.eR), 0.f, 1e-5f);
-	EXPECT_NEAR(norm3(output.ew), 0.f, 1e-5f);
+	EXPECT_NEAR(output.r_error[0], 0.f, 1e-6f);
+	EXPECT_NEAR(output.r_error[1], 0.f, 1e-6f);
+	EXPECT_NEAR(output.r_error[2], 0.f, 1e-6f);
+	EXPECT_NEAR(output.v_error[0], 0.f, 1e-6f);
+	EXPECT_NEAR(output.v_error[1], 0.f, 1e-6f);
+	EXPECT_NEAR(output.v_error[2], 0.f, 1e-6f);
+	EXPECT_NEAR(output.target_thrust, parameters.mass_kg * kGravityMss, 1e-4f);
+	EXPECT_NEAR(norm3(output.M), 0.f, 1e-5f);
 }
 
-TEST(GeometricController, DynamicCircleDoesNotForceOmegaDToZeroAndStaysFinite)
+TEST(GeometricController, TargetYawIsOriginalCosSinVectorNotScalarYaw)
 {
 	GeometricController controller;
 	GeometricController::Input input = make_hover_input();
 
-	const float radius = 1.f;
-	const float speed = 0.5f;
-	const float omega = speed / radius;
-
-	input.position_ned[0] = radius;
-	input.position_ned[1] = 0.f;
-	input.position_ned[2] = -1.f;
-
-	input.target_position_ned[0] = radius;
-	input.target_position_ned[1] = 0.f;
-	input.target_position_ned[2] = -1.f;
-
-	input.target_velocity_ned[0] = 0.f;
-	input.target_velocity_ned[1] = speed;
-	input.target_velocity_ned[2] = 0.f;
-
-	input.target_acceleration_ned[0] = -radius * omega * omega;
-	input.target_acceleration_ned[1] = 0.f;
-	input.target_acceleration_ned[2] = 0.f;
-
-	input.target_jerk_ned[0] = 0.f;
-	input.target_jerk_ned[1] = -radius * omega * omega * omega;
-	input.target_jerk_ned[2] = 0.f;
-
-	input.target_snap_ned[0] = radius * omega * omega * omega * omega;
-	input.target_snap_ned[1] = 0.f;
-	input.target_snap_ned[2] = 0.f;
+	const float yaw = 0.4f;
+	input.target_yaw[0] = cosf(yaw);
+	input.target_yaw[1] = sinf(yaw);
 
 	GeometricController::Output output{};
 	EXPECT_TRUE(controller.update(input, output));
 	ASSERT_TRUE(output.valid);
+	EXPECT_GT(fabsf(output.M[2]), 1e-5f);
+}
 
-	EXPECT_GT(norm3(output.Omegad), 1e-4f);
-	EXPECT_TRUE(finite3(output.Omegad));
-	EXPECT_TRUE(finite3(output.Omegad_dot));
-	EXPECT_TRUE(finite3(output.M));
-	EXPECT_TRUE(finite3(output.target_force));
-	EXPECT_TRUE(finite3(output.target_force_dot));
-	EXPECT_TRUE(finite3(output.target_force_ddot));
-	EXPECT_TRUE(isfinite(output.target_thrust));
-	EXPECT_TRUE(isfinite(output.target_thrust_dot));
+TEST(GeometricController, InvalidPX4StateIsRejectedOutsideNumericalCore)
+{
+	GeometricController controller;
+	GeometricController::Input input = make_hover_input();
+	input.failsafe = true;
+
+	GeometricController::Output output{};
+	EXPECT_TRUE(controller.update(input, output));
+	EXPECT_FALSE(output.valid);
+	EXPECT_FLOAT_EQ(output.target_thrust, 0.f);
+	EXPECT_FLOAT_EQ(output.M[0], 0.f);
+	EXPECT_FLOAT_EQ(output.M[1], 0.f);
+	EXPECT_FLOAT_EQ(output.M[2], 0.f);
 }
