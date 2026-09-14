@@ -11,8 +11,8 @@ PARAM_DEFINE_INT32(L1_FAIL_EN, 1);
 /**
  * Motor 1 command scale applied after the original ModeAdaptive motor mixer
  *
- * This is an external actuator-degradation injection and is not part of the
- * source L1Quad controller equations.
+ * 1.0 is source-equivalent (no degradation). Values below 1.0 inject an
+ * external Motor 1 degradation after the original nonlinear mixer.
  *
  * @min 0.0
  * @max 1.0
@@ -20,7 +20,7 @@ PARAM_DEFINE_INT32(L1_FAIL_EN, 1);
  * @increment 0.05
  * @group L1 Adaptive Control
  */
-PARAM_DEFINE_FLOAT(L1_MOT1_SCALE, 0.8f);
+PARAM_DEFINE_FLOAT(L1_MOT1_SCALE, 1.0f);
 
 /** Original CIRCRADIUSX parameter. @group L1 Adaptive Control */
 PARAM_DEFINE_FLOAT(L1_CIR_RADIUS, 2.0f);
