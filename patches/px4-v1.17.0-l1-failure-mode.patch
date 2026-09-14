@@ -14,7 +14,7 @@ index adff4e963f..5bfdb920e6 100644
  # Start Multicopter Attitude Controller.
  #
 diff --git a/msg/versioned/VehicleStatus.msg b/msg/versioned/VehicleStatus.msg
-index 0dffdc2c92..c09f54da82 100644
+index 0dff4e963f..c09f54da82 100644
 --- a/msg/versioned/VehicleStatus.msg
 +++ b/msg/versioned/VehicleStatus.msg
 @@ -40,7 +40,7 @@ uint8 NAVIGATION_STATE_AUTO_MISSION = 3         # Auto mission mode
@@ -107,10 +107,10 @@ index 59858a51e8..73e4045f80 100644
 +		vehicle_control_mode.flag_control_altitude_enabled = true;
 +		vehicle_control_mode.flag_control_climb_rate_enabled = true;
 +		vehicle_control_mode.flag_control_attitude_enabled = true;
-+		// L1 publishes vehicle torque directly; keep the native rate controller
-+		// running but prevent it from publishing a competing torque setpoint.
++		// The source-equivalent L1 module publishes actuator_motors directly.
++		// Disable native rate torque output and control allocator publication.
 +		vehicle_control_mode.flag_control_rates_enabled = false;
-+		vehicle_control_mode.flag_control_allocation_enabled = true;
++		vehicle_control_mode.flag_control_allocation_enabled = false;
 +		break;
 +
 +	case vehicle_status_s::NAVIGATION_STATE_L1_FAILURE_ALT:
@@ -118,10 +118,9 @@ index 59858a51e8..73e4045f80 100644
 +		vehicle_control_mode.flag_control_altitude_enabled = true;
 +		vehicle_control_mode.flag_control_climb_rate_enabled = true;
 +		vehicle_control_mode.flag_control_attitude_enabled = true;
-+		// The altitude task keeps the normal throttle-stick climb-rate logic,
-+		// while L1 publishes the final thrust and torque setpoints.
++		// Compatibility entry point for the same source-equivalent direct-motor path.
 +		vehicle_control_mode.flag_control_rates_enabled = false;
-+		vehicle_control_mode.flag_control_allocation_enabled = true;
++		vehicle_control_mode.flag_control_allocation_enabled = false;
 +		break;
 +
  	case vehicle_status_s::NAVIGATION_STATE_AUTO_RTL:

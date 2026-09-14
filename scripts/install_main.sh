@@ -35,7 +35,10 @@ apply_once() {
 
 copy_tree "$repo_dir/l1_adaptive_control" "$px4_dir/src/modules/l1_adaptive_control"
 apply_once "$px4_dir" "$repo_dir/patches/px4-v1.17.0-l1-failure-mode.patch"
-apply_once "$px4_dir" "$repo_dir/patches/px4-v1.17.0-motor-degradation.patch"
 apply_once "$px4_dir" "$repo_dir/patches/px4-v1.17.0-fmu-v6c-integration.patch"
 
-echo "Installed. Build with: cd $px4_dir && make px4_fmu-v6c_default"
+# Motor degradation is no longer patched into ControlAllocator.  The
+# source-equivalent module applies L1_MOT1_SCALE after the original
+# ModeAdaptive motorMixing() result and publishes actuator_motors directly.
+echo "Installed source-equivalent ModeAdaptive path."
+echo "Build with: cd $px4_dir && make px4_fmu-v6c_default"
