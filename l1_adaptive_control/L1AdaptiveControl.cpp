@@ -120,7 +120,7 @@ void L1AdaptiveControl::apply_parameter_values()
 		trajectory_parameters.radius_x = _param_l1_cir_radius.get();
 		trajectory_parameters.radius_y = _param_l1_cir_rad_y.get();
 		trajectory_parameters.target_speed = _param_l1_cir_speed.get();
-		trajectory_parameters.trajectory_index = static_cast<uint8_t>(math::constrain(_param_l1_traj_idx.get(), 0, 4));
+		trajectory_parameters.trajectory_index = static_cast<uint8_t>(math::constrain<int32_t>(_param_l1_traj_idx.get(), 0, 4));
 		_trajectory_generator.set_parameters(trajectory_parameters);
 	}
 }
@@ -260,7 +260,7 @@ void L1AdaptiveControl::update_failure_mode()
 		trajectory_parameters.radius_x = _param_l1_cir_radius.get();
 		trajectory_parameters.radius_y = _param_l1_cir_rad_y.get();
 		trajectory_parameters.target_speed = _param_l1_cir_speed.get();
-		trajectory_parameters.trajectory_index = static_cast<uint8_t>(math::constrain(_param_l1_traj_idx.get(), 0, 4));
+		trajectory_parameters.trajectory_index = static_cast<uint8_t>(math::constrain<int32_t>(_param_l1_traj_idx.get(), 0, 4));
 		_trajectory_generator.set_parameters(trajectory_parameters);
 	}
 
