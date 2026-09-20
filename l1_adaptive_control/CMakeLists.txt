@@ -17,7 +17,6 @@ px4_add_module(
 		L1AdaptiveAugmentation.hpp
 		MotorMixer.cpp
 		MotorMixer.hpp
-		l1_adaptive_control_params.c
 	DEPENDS
 		px4_work_queue
 )
