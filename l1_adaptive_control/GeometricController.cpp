@@ -20,7 +20,7 @@ static constexpr float GRAVITY_MAGNITUDE = 9.80665f;
 
 bool is_finite(const Vector3f &v)
 {
-	return isfinite(v(0)) && isfinite(v(1)) && isfinite(v(2));
+	return std::isfinite(v(0)) && std::isfinite(v(1)) && std::isfinite(v(2));
 }
 
 Matrix3f hatOperator(const Vector3f &input)
@@ -47,7 +47,7 @@ bool unit_vec(const Vector3f &q, const Vector3f &q_dot, const Vector3f &q_ddot, 
 {
 	const float nq = q.norm();
 
-	if (nq < 1e-6f || !isfinite(nq)) {
+	if (nq < 1e-6f || !std::isfinite(nq)) {
 		return false;
 	}
 
@@ -76,10 +76,10 @@ void copy_vector(const Vector3f &input, float output[3])
 
 bool output_is_finite(const GeometricController::Output &output)
 {
-	return isfinite(output.target_thrust)
-	       && isfinite(output.r_error[0]) && isfinite(output.r_error[1]) && isfinite(output.r_error[2])
-	       && isfinite(output.v_error[0]) && isfinite(output.v_error[1]) && isfinite(output.v_error[2])
-	       && isfinite(output.M[0]) && isfinite(output.M[1]) && isfinite(output.M[2]);
+	return std::isfinite(output.target_thrust)
+	       && std::isfinite(output.r_error[0]) && std::isfinite(output.r_error[1]) && std::isfinite(output.r_error[2])
+	       && std::isfinite(output.v_error[0]) && std::isfinite(output.v_error[1]) && std::isfinite(output.v_error[2])
+	       && std::isfinite(output.M[0]) && std::isfinite(output.M[1]) && std::isfinite(output.M[2]);
 }
 
 } // namespace
