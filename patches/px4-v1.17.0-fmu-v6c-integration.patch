@@ -2,9 +2,9 @@ diff --git a/boards/px4/fmu-v6c/default.px4board b/boards/px4/fmu-v6c/default.px
 index a60c2f65eb..3b1890359a 100644
 --- a/boards/px4/fmu-v6c/default.px4board
 +++ b/boards/px4/fmu-v6c/default.px4board
-@@ -51,6 +51,7 @@ CONFIG_MODULES_FW_LATERAL_LONGITUDINAL_CONTROL=y
+@@ -51,7 +51,7 @@ CONFIG_MODULES_FW_LATERAL_LONGITUDINAL_CONTROL=y
  CONFIG_MODULES_FW_RATE_CONTROL=y
- CONFIG_MODULES_GIMBAL=y
+-CONFIG_MODULES_GIMBAL=y
  CONFIG_MODULES_GYRO_CALIBRATION=y
 +CONFIG_MODULES_L1_ADAPTIVE_CONTROL=y
  CONFIG_MODULES_LAND_DETECTOR=y
