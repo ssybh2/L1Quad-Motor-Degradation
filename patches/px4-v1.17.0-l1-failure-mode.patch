@@ -96,7 +96,7 @@ diff --git a/src/modules/commander/ModeUtil/control_mode.cpp b/src/modules/comma
 index 59858a51e8..73e4045f80 100644
 --- a/src/modules/commander/ModeUtil/control_mode.cpp
 +++ b/src/modules/commander/ModeUtil/control_mode.cpp
-@@ -84,6 +84,30 @@ void getVehicleControlMode(uint8_t nav_state, uint8_t vehicle_type,
+@@ -84,6 +84,29 @@ void getVehicleControlMode(uint8_t nav_state, uint8_t vehicle_type,
  		vehicle_control_mode.flag_control_allocation_enabled = true;
  		break;
  
